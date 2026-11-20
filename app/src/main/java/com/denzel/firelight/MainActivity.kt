@@ -284,13 +284,8 @@ class MainActivity : Activity() {
         effectsCard.addView(text("Вогонь працює у фоні, навіть коли ти перемикаєшся на інші застосунки.", 12f, muted))
         root.addView(effectsCard)
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            clipToPadding = false
-            setBackgroundColor(background)
-            addView(root)
-        }
-        setContentView(scroll)
+        // Fixed screen: no vertical scrolling.
+        setContentView(root)
     }
 
     private fun startKeepAliveService() {
@@ -761,17 +756,44 @@ private class ColorWheelView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action != MotionEvent.ACTION_DOWN &&
-            event.action != MotionEvent.ACTION_MOVE) return true
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                updateSelection(event.x, event.y)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateSelection(event.x, event.y)
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                updateSelection(event.x, event.y)
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun updateSelection(touchX: Float, touchY: Float) {
         val radius = minOf(width, height) / 2f
-        val dx = event.x - radius
-        val dy = radius - event.y
+        if (radius <= 0f) return
+        val dx = touchX - radius
+        val dy = radius - touchY
         val distance = kotlin.math.sqrt(dx * dx + dy * dy)
         selectedSaturation = (distance / radius).coerceIn(0f, 1f)
         selectedHue = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
-        val color = Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f))
-        onColorSelected(color)
+        onColorSelected(Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f)))
         invalidate()
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
         return true
     }
 }
@@ -816,20 +838,43 @@ private class ModernSliderView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action != MotionEvent.ACTION_DOWN &&
-            event.action != MotionEvent.ACTION_MOVE &&
-            event.action != MotionEvent.ACTION_UP) return true
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                isPressed = true
+                updateFromTouch(event.x)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateFromTouch(event.x)
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                updateFromTouch(event.x)
+                isPressed = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                isPressed = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun updateFromTouch(touchX: Float) {
         val left = thumbRadius
-        val right = width - thumbRadius
-        val fraction = ((event.x - left) / (right - left)).coerceIn(0f, 1f)
-        val next = (fraction * maximum).toInt()
+        val right = (width - thumbRadius).coerceAtLeast(left + 1f)
+        val fraction = ((touchX - left) / (right - left)).coerceIn(0f, 1f)
+        val next = (fraction * maximum).toInt().coerceIn(0, maximum)
         if (next != value) {
             value = next
             onChanged(value)
             invalidate()
         }
-        if (event.action == MotionEvent.ACTION_UP) performClick()
-        return true
     }
 
     override fun performClick(): Boolean {
