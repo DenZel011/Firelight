@@ -273,7 +273,7 @@ class MainActivity : Activity() {
             isFillViewport = true
             clipToPadding = false
             setPadding(0, dp(2), 0, dp(8))
-            addView(firePage, ScrollView.LayoutParams(-1, -2))
+            addView(firePage, android.view.ViewGroup.LayoutParams(-1, -2))
         }
         pageHost.addView(fireScroll)
         root.addView(pageHost)
