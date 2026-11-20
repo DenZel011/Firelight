@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private var fireNextChangeAt = 0L
     private var fireLastTickAt = 0L
     private var fireFlare = 0f
+    private var fireSmoothingMs = 78f
 
     private lateinit var status: TextView
     private lateinit var fireButton: Button
@@ -89,13 +90,20 @@ class MainActivity : Activity() {
                     else -> Random.nextFloat() * 28f - 13f
                 }
                 fireSaturationTarget = Random.nextFloat() * 0.16f + 0.82f
+                // Most flickers stay sharp; occasionally the flame rolls gently
+                // into its next state, like a slower, softer tongue of fire.
+                fireSmoothingMs = if (Random.nextFloat() < 0.32f) {
+                    Random.nextFloat() * 250f + 260f
+                } else {
+                    Random.nextFloat() * 48f + 58f
+                }
                 if (roll < 0.13f) fireFlare = Random.nextFloat() * 0.24f + 0.12f
                 val interval = 330L - (speed.coerceIn(11, 20) - 11) * 28L
                 fireNextChangeAt = now + Random.nextLong((interval * 0.55f).toLong().coerceAtLeast(45L),
                     (interval * 1.15f).toLong().coerceAtLeast(70L))
             }
 
-            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / 72f)
+            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / fireSmoothingMs)
             fireLevel += (fireLevelTarget - fireLevel) * blend
             fireHueShift += (fireHueTarget - fireHueShift) * (blend * 0.9f)
             fireSaturation += (fireSaturationTarget - fireSaturation) * blend
@@ -124,6 +132,7 @@ class MainActivity : Activity() {
         fireNextChangeAt = 0L
         fireLastTickAt = 0L
         fireFlare = 0f
+        fireSmoothingMs = 78f
     }
 
     // The selected wheel color is the fire's base hue. Flicker changes brightness
@@ -771,6 +780,7 @@ private class ColorWheelView(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var wheelBitmap: Bitmap? = null
     private var selectedHue = 24f
+    private var selectedAngle = 24f
     private var selectedSaturation = 0.95f
     private val density = resources.displayMetrics.density
 
@@ -780,21 +790,6 @@ private class ColorWheelView(
         val height = resolveSize(desired, heightMeasureSpec)
         val side = minOf(width, height)
         setMeasuredDimension(side, side)
-    }
-
-    // Expand the pure-red sector so it is easier to select. This same mapping
-    // is used for both the pixels drawn on the wheel and the RGB sent on touch.
-    private fun wheelHue(angle: Float): Float {
-        val a = ((angle % 360f) + 360f) % 360f
-        val points = floatArrayOf(0f, 34f, 94f, 154f, 214f, 274f, 334f, 360f)
-        val hues = floatArrayOf(0f, 0f, 60f, 120f, 180f, 240f, 300f, 360f)
-        for (i in 0 until points.size - 1) {
-            if (a <= points[i + 1]) {
-                val t = (a - points[i]) / (points[i + 1] - points[i])
-                return hues[i] + (hues[i + 1] - hues[i]) * t
-            }
-        }
-        return 0f
     }
 
     private fun makeWheel(side: Int) {
@@ -811,7 +806,7 @@ private class ColorWheelView(
                 val index = y * side + x
                 if (distance <= radius) {
                     val angle = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
-                    hsv[0] = wheelHue(angle)
+                    hsv[0] = angle
                     hsv[1] = (distance / radius).coerceIn(0f, 1f)
                     pixels[index] = Color.HSVToColor(hsv)
                 } else {
@@ -832,7 +827,7 @@ private class ColorWheelView(
         }
         val radius = side / 2f
         val markerRadius = selectedSaturation * radius
-        val markerAngle = Math.toRadians(selectedHue.toDouble())
+        val markerAngle = Math.toRadians(selectedAngle.toDouble())
         val cx = radius + kotlin.math.cos(markerAngle).toFloat() * markerRadius
         val cy = radius - kotlin.math.sin(markerAngle).toFloat() * markerRadius
         paint.style = Paint.Style.STROKE
@@ -878,7 +873,8 @@ private class ColorWheelView(
         val distance = kotlin.math.sqrt(dx * dx + dy * dy)
         selectedSaturation = (distance / radius).coerceIn(0f, 1f)
         val angle = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
-        selectedHue = wheelHue(angle)
+        selectedAngle = angle
+        selectedHue = angle
         onColorSelected(Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f)))
         invalidate()
     }
