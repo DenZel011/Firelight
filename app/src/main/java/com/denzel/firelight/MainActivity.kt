@@ -247,41 +247,54 @@ class MainActivity : Activity() {
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
         addGap(connectionCard, 5)
-        connectionCard.addView(text("ПРИСТРІЙ", 10f, muted, true))
-        addGap(connectionCard, 3)
         deviceAdapter = object : ArrayAdapter<String>(
             this, android.R.layout.simple_spinner_item, deviceNames
         ) {
             override fun isEnabled(position: Int): Boolean = position == 0 && connected
 
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                return (super.getView(position, convertView, parent) as TextView).apply {
+                return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
                     text = deviceNames[position]
-                    textSize = 15f
+                    textSize = 14f
+                    gravity = android.view.Gravity.CENTER_VERTICAL
                     setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    setPadding(dp(12), 0, dp(34), 0)
+                    includeFontPadding = false
                 }
             }
 
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                return (super.getDropDownView(position, convertView, parent) as TextView).apply {
-                    text = if (position == 0 && connected) "ELK-BLEDOB  •  Підключено"
-                        else if (position == 0) "ELK-BLEDOB  •  Недоступний"
-                        else "${deviceNames[position]}  •  Недоступний"
+                return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
+                    text = if (position == 0 && connected) "ELK-BLEDOB     Підключено"
+                        else if (position == 0) "ELK-BLEDOB     Недоступний"
+                        else "${deviceNames[position]}     Недоступний"
                     textSize = 14f
+                    gravity = android.view.Gravity.CENTER_VERTICAL
                     setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    setPadding(dp(16), 0, dp(12), 0)
+                    setBackgroundColor(Color.TRANSPARENT)
+                    minHeight = dp(48)
+                    includeFontPadding = false
                 }
             }
-        }.apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
-        val deviceSpinner = Spinner(this).apply {
+        val deviceSpinner = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
             adapter = deviceAdapter
             setSelection(0)
-            setBackground(rounded(Color.rgb(31, 36, 48), 14, Color.rgb(55, 63, 80)))
+            setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
+            setPadding(0, 0, dp(28), 0)
+            dropDownWidth = resources.displayMetrics.widthPixels - dp(48)
+            dropDownHorizontalOffset = 0
+            dropDownVerticalOffset = dp(4)
+            setPopupBackgroundDrawable(rounded(Color.rgb(17, 21, 30), 16, Color.rgb(61, 70, 88)))
         }
-        connectionCard.addView(deviceSpinner, LinearLayout.LayoutParams(-1, dp(46)))
+        val deviceField = FrameLayout(this).apply {
+            addView(deviceSpinner, FrameLayout.LayoutParams(-1, dp(38)))
+            addView(text("⌄", 22f, Color.rgb(190, 199, 215), true).apply {
+                gravity = android.view.Gravity.CENTER
+            }, FrameLayout.LayoutParams(dp(36), -1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
+        }
+        connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
         addGap(connectionCard, 5)
         status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
         connectionCard.addView(status)
