@@ -290,10 +290,22 @@ class MainActivity : Activity() {
         }
         val deviceField = FrameLayout(this).apply {
             addView(deviceSpinner, FrameLayout.LayoutParams(-1, dp(38)))
-            addView(text("⌄", 22f, Color.rgb(190, 199, 215), true).apply {
-                gravity = android.view.Gravity.CENTER
-                includeFontPadding = false
-                setPadding(0, 0, 0, 0)
+            addView(object : View(this) {
+                private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.rgb(190, 199, 215)
+                    style = Paint.Style.STROKE
+                    strokeWidth = dp(2).toFloat()
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+                override fun onDraw(canvas: Canvas) {
+                    super.onDraw(canvas)
+                    val cx = width / 2f
+                    val cy = height / 2f - dp(2)
+                    val half = dp(5).toFloat()
+                    canvas.drawLine(cx - half, cy - dp(2), cx, cy + dp(3), arrowPaint)
+                    canvas.drawLine(cx, cy + dp(3), cx + half, cy - dp(2), arrowPaint)
+                }
             }, FrameLayout.LayoutParams(dp(36), -1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
@@ -326,7 +338,9 @@ class MainActivity : Activity() {
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         root.addView(pageHost)
 
-        val colorCard = card()
+        val colorCard = card().apply {
+            setPadding(dp(12), dp(4), dp(12), dp(12))
+        }
         val colorHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -336,7 +350,7 @@ class MainActivity : Activity() {
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(42), dp(42)))
+        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(30), dp(30)))
         colorCard.addView(colorHeader)
         addGap(colorCard, 4)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
