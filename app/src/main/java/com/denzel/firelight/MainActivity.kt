@@ -149,7 +149,7 @@ class MainActivity : Activity() {
         fun card(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(18), dp(18), dp(18))
-            background = rounded(panel, 24, Color.rgb(39, 45, 59))
+            setBackground(rounded(panel, 24, Color.rgb(39, 45, 59)))
         }
 
         fun addGap(parent: LinearLayout, height: Int) {
@@ -163,8 +163,8 @@ class MainActivity : Activity() {
                 textSize = 15f
                 setTextColor(if (primary) Color.WHITE else Color.rgb(222, 228, 239))
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                background = rounded(if (primary) accent else Color.rgb(37, 43, 57), 17,
-                    if (primary) null else Color.rgb(55, 63, 80))
+                setBackground(rounded(if (primary) accent else Color.rgb(37, 43, 57), 17,
+                    if (primary) null else Color.rgb(55, 63, 80)))
                 stateListAnimator = null
                 elevation = 0f
                 setPadding(dp(16), 0, dp(16), 0)
@@ -183,7 +183,7 @@ class MainActivity : Activity() {
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         val live = text("●  BLE", 11f, Color.rgb(117, 224, 173), true).apply {
             setPadding(dp(12), dp(9), dp(12), dp(9))
-            background = rounded(Color.rgb(25, 55, 48), 30)
+            setBackground(rounded(Color.rgb(25, 55, 48), 30))
         }
         header.addView(live)
         root.addView(header)
