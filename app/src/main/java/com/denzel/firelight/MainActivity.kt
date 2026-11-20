@@ -1062,6 +1062,7 @@ class MainActivity : Activity() {
     }
 
     private fun closeGattConnection() {
+        handler.removeCallbacks(powerStateTimeout)
         val oldGatt = gatt
         gatt = null
         connected = false
