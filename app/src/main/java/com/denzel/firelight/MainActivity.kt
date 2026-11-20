@@ -1103,7 +1103,8 @@ class MainActivity : Activity() {
         try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
         super.onDestroy()
     }
-    
+}
+
 /** Square power toggle with a filled/outline bulb state. */
 private class BulbToggleView(
     context: Context,
@@ -1182,8 +1183,8 @@ private class BulbToggleView(
             cubicTo(cx - 4f * d, cy + 3.5f * d, cx - 6.5f * d, cy + 1.6f * d, cx - 6.5f * d, cy - 1.5f * d)
             close()
         }
-        paint.style = if (lit) Paint.Style.FILL else Paint.Style.STROKE
-        if (lit) {
+        paint.style = if (lit == true) Paint.Style.FILL else Paint.Style.STROKE
+        if (lit == true) {
             paint.setShadowLayer(3f * d, 0f, 0f, 0x55FF8E69)
             canvas.drawPath(globe, paint)
             paint.clearShadowLayer()
