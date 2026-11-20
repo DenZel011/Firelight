@@ -133,7 +133,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(12), dp(24), dp(12), dp(8))
             setBackgroundColor(background)
         }
 
@@ -526,6 +526,47 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun sendPowerCommand(on: Boolean) {
+        // ELK-BLEDOM / Lotus Lantern dedicated power command on FFF0:FFF3.
+        val packet = if (on) {
+            byteArrayOf(0x7E, 0x04, 0x04, 0xF0.toByte(), 0x00, 0x01, 0xFF.toByte(), 0x00, 0xEF.toByte())
+        } else {
+            byteArrayOf(0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
+        }
+        writeBlePacket(packet)
+    }
+
+    private fun writeBlePacket(packet: ByteArray) {
+        val g = gatt ?: return
+        val char = characteristic ?: return
+        try {
+            val supportsNoResponse =
+                (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+            val writeType = if (supportsNoResponse) {
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            } else {
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            }
+            val result = if (Build.VERSION.SDK_INT >= 33) {
+                g.writeCharacteristic(char, packet, writeType)
+            } else {
+                @Suppress("DEPRECATION")
+                char.writeType = writeType
+                @Suppress("DEPRECATION")
+                char.value = packet
+                @Suppress("DEPRECATION")
+                if (g.writeCharacteristic(char)) BluetoothGatt.GATT_SUCCESS
+                else BluetoothGatt.GATT_FAILURE
+            }
+            lastWriteAt = SystemClock.uptimeMillis()
+            if (result != BluetoothGatt.GATT_SUCCESS) {
+                runOnUiThread { status.text = "BLE не прийняв команду живлення (код $result)" }
+            }
+        } catch (_: SecurityException) {
+            runOnUiThread { status.text = "Помилка дозволу на запис Bluetooth" }
+        }
+    }
+
     private fun sendCurrentColor() {
         sendRGB(red, green, blue)
     }
@@ -557,38 +598,7 @@ class MainActivity : Activity() {
         val g = gatt ?: return
         val char = characteristic ?: return
 
-        try {
-            val supportsNoResponse =
-                (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
-            val writeType = if (supportsNoResponse) {
-                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            } else {
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            }
-
-            val result = if (Build.VERSION.SDK_INT >= 33) {
-                g.writeCharacteristic(char, packet, writeType)
-            } else {
-                @Suppress("DEPRECATION")
-                char.writeType = writeType
-                @Suppress("DEPRECATION")
-                char.value = packet
-                @Suppress("DEPRECATION")
-                if (g.writeCharacteristic(char)) BluetoothGatt.GATT_SUCCESS
-                else BluetoothGatt.GATT_FAILURE
-            }
-
-            lastWriteAt = SystemClock.uptimeMillis()
-            if (result != BluetoothGatt.GATT_SUCCESS) {
-                runOnUiThread { status.text = "BLE не прийняв колір (код $result)" }
-            } else {
-                runOnUiThread {
-                    status.text = "Підключено • RGB ${packet[4].toInt() and 255}, ${packet[5].toInt() and 255}, ${packet[6].toInt() and 255}"
-                }
-            }
-        } catch (_: SecurityException) {
-            runOnUiThread { status.text = "Помилка дозволу на запис Bluetooth" }
-        }
+        writeBlePacket(packet)
 
         if (pendingPacket != null && !writeScheduled) {
             writeScheduled = true
@@ -603,20 +613,28 @@ class MainActivity : Activity() {
         }
         stripOn = !stripOn
         if (!stripOn) {
-            sendRGB(0, 0, 0)
+            sendPowerCommand(false)
             stripButton.text = "Увімкнути гірлянду"
+            fireEnabled = false
+            handler.removeCallbacks(fireTask)
+            fireButton.text = "Увімкнути ефект вогню"
         } else {
             stripButton.text = "Вимкнути гірлянду"
-            if (fireEnabled) {
-                fireFrom = intArrayOf(red, green, blue)
-                fireTo = nextFireColor()
-                fireTransitionStart = SystemClock.uptimeMillis()
-                fireTransitionDuration = nextTransitionDuration()
-                handler.removeCallbacks(fireTask)
-                fireTask.run()
-            } else {
-                sendCurrentColor()
-            }
+            // Wake the controller with its dedicated power command before sending RGB.
+            sendPowerCommand(true)
+            handler.postDelayed({
+                if (!connected || !stripOn) return@postDelayed
+                if (fireEnabled) {
+                    fireFrom = intArrayOf(red, green, blue)
+                    fireTo = nextFireColor()
+                    fireTransitionStart = SystemClock.uptimeMillis()
+                    fireTransitionDuration = nextTransitionDuration()
+                    handler.removeCallbacks(fireTask)
+                    fireTask.run()
+                } else {
+                    sendCurrentColor()
+                }
+            }, 180L)
         }
     }
 
@@ -630,9 +648,11 @@ class MainActivity : Activity() {
             return
         }
 
-        if (!stripOn) {
+        val wasStripOff = !stripOn
+        if (wasStripOff) {
             stripOn = true
             stripButton.text = "Вимкнути гірлянду"
+            sendPowerCommand(true)
         }
         fireEnabled = !fireEnabled
 
@@ -642,7 +662,13 @@ class MainActivity : Activity() {
             fireTo = nextFireColor()
             fireTransitionStart = SystemClock.uptimeMillis()
             fireTransitionDuration = nextTransitionDuration()
-            fireTask.run()
+            if (wasStripOff) {
+                handler.postDelayed({
+                    if (fireEnabled && connected && stripOn) fireTask.run()
+                }, 180L)
+            } else {
+                fireTask.run()
+            }
         } else {
             handler.removeCallbacks(fireTask)
             fireButton.text = "Увімкнути ефект вогню"
