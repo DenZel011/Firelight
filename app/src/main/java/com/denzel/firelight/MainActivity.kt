@@ -47,6 +47,15 @@ class MainActivity : Activity() {
     private var fireTo = intArrayOf(235, 55, 3)
     private var fireTransitionStart = 0L
     private var fireTransitionDuration = 600L
+    private var fireLevel = 0.76f
+    private var fireLevelTarget = 0.76f
+    private var fireHueShift = 0f
+    private var fireHueTarget = 0f
+    private var fireSaturation = 0.94f
+    private var fireSaturationTarget = 0.94f
+    private var fireNextChangeAt = 0L
+    private var fireLastTickAt = 0L
+    private var fireFlare = 0f
 
     private lateinit var status: TextView
     private lateinit var fireButton: Button
@@ -61,26 +70,55 @@ class MainActivity : Activity() {
             if (!fireEnabled || !connected || !stripOn) return
 
             val now = SystemClock.uptimeMillis()
-            var progress = ((now - fireTransitionStart).toFloat() /
-                fireTransitionDuration.toFloat()).coerceIn(0f, 1f)
+            val elapsed = if (fireLastTickAt == 0L) 80L
+                else (now - fireLastTickAt).coerceIn(1L, 250L)
+            fireLastTickAt = now
 
-            if (progress >= 1f) {
-                fireFrom = fireTo.copyOf()
-                fireTo = nextFireColor()
-                fireTransitionStart = now
-                fireTransitionDuration = nextTransitionDuration()
-                progress = 0f
+            // Slow breathing mixed with irregular flicker and rare short flare-ups.
+            if (now >= fireNextChangeAt) {
+                val roll = Random.nextFloat()
+                fireLevelTarget = when {
+                    roll < 0.075f -> Random.nextFloat() * 0.12f + 0.86f
+                    roll < 0.16f -> Random.nextFloat() * 0.13f + 0.43f
+                    else -> Random.nextFloat() * 0.25f + 0.59f
+                }
+                fireHueTarget = Random.nextFloat() * 10f - 5f
+                fireSaturationTarget = Random.nextFloat() * 0.10f + 0.88f
+                if (roll < 0.075f) fireFlare = Random.nextFloat() * 0.20f + 0.10f
+                val interval = Random.nextLong(180L, 460L)
+                val speedFactor = (21 - speed).toFloat() / 10f
+                fireNextChangeAt = now + (interval / speedFactor).toLong().coerceAtLeast(90L)
             }
 
-            // Smoothstep easing: no abrupt jumps between fire shades.
-            val eased = progress * progress * (3f - 2f * progress)
-            fun blend(index: Int): Int =
-                (fireFrom[index] + (fireTo[index] - fireFrom[index]) * eased)
-                    .toInt().coerceIn(0, 255)
+            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / 190f)
+            fireLevel += (fireLevelTarget - fireLevel) * blend
+            fireHueShift += (fireHueTarget - fireHueShift) * (blend * 0.65f)
+            fireSaturation += (fireSaturationTarget - fireSaturation) * blend
+            fireFlare *= kotlin.math.exp(-elapsed.toFloat() / 260f)
 
-            sendRGB(blend(0), blend(1), blend(2))
+            val slowWave = kotlin.math.sin(now / 730.0).toFloat() * 0.035f
+            val secondaryWave = kotlin.math.sin(now / 173.0).toFloat() * 0.018f
+            val level = (fireLevel + slowWave + secondaryWave + fireFlare).coerceIn(0.34f, 1f)
+
+            val hsv = FloatArray(3)
+            Color.RGBToHSV(red, green, blue, hsv)
+            val hue = (hsv[0] + fireHueShift + 360f) % 360f
+            val saturation = (hsv[1] * fireSaturation).coerceIn(0.12f, 1f)
+            val rgb = Color.HSVToColor(floatArrayOf(hue, saturation, level))
+            sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
             handler.postDelayed(this, nextFireTick())
         }
+    }
+    private fun resetFireMotion() {
+        fireLevel = 0.76f
+        fireLevelTarget = 0.76f
+        fireHueShift = 0f
+        fireHueTarget = 0f
+        fireSaturation = 0.94f
+        fireSaturationTarget = 0.94f
+        fireNextChangeAt = 0L
+        fireLastTickAt = 0L
+        fireFlare = 0f
     }
 
     // The selected wheel color is the fire's base hue. Flicker changes brightness
@@ -98,7 +136,7 @@ class MainActivity : Activity() {
 
     // 1 = slow, 20 = fast. Both the flicker interval and transition duration
     // respond to the slider; the BLE writer still coalesces packets safely.
-    private fun nextFireTick(): Long = (230L - speed * 9L).coerceIn(50L, 221L)
+    private fun nextFireTick(): Long = (145L - speed * 4L).coerceIn(65L, 101L)
 
     private fun nextTransitionDuration(): Long {
         val base = 2600L - speed * 115L
@@ -133,7 +171,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(24), dp(12), dp(8))
+            setPadding(dp(12), dp(48), dp(12), dp(8))
             setBackgroundColor(background)
         }
 
@@ -630,10 +668,7 @@ class MainActivity : Activity() {
             handler.postDelayed({
                 if (!connected || !stripOn) return@postDelayed
                 if (fireEnabled) {
-                    fireFrom = intArrayOf(red, green, blue)
-                    fireTo = nextFireColor()
-                    fireTransitionStart = SystemClock.uptimeMillis()
-                    fireTransitionDuration = nextTransitionDuration()
+                    resetFireMotion()
                     handler.removeCallbacks(fireTask)
                     fireTask.run()
                 } else {
@@ -663,10 +698,7 @@ class MainActivity : Activity() {
 
         if (fireEnabled) {
             fireButton.text = "Вимкнути ефект вогню"
-            fireFrom = intArrayOf(red, green, blue)
-            fireTo = nextFireColor()
-            fireTransitionStart = SystemClock.uptimeMillis()
-            fireTransitionDuration = nextTransitionDuration()
+            resetFireMotion()
             if (wasStripOff) {
                 handler.postDelayed({
                     if (fireEnabled && connected && stripOn) fireTask.run()
