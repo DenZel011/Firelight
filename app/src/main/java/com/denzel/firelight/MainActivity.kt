@@ -808,12 +808,12 @@ class MainActivity : Activity() {
         stripOn = !stripOn
         if (!stripOn) {
             sendPowerCommand(false)
-            stripButton.text = "Увімкнути гірлянду"
+            bulbButton.setLit(stripOn)
             fireEnabled = false
             handler.removeCallbacks(fireTask)
             fireButton.text = "Увімкнути ефект вогню"
         } else {
-            stripButton.text = "Вимкнути гірлянду"
+            bulbButton.setLit(stripOn)
             // Wake the controller with its dedicated power command before sending RGB.
             sendPowerCommand(true)
             handler.postDelayed({
@@ -842,7 +842,7 @@ class MainActivity : Activity() {
         val wasStripOff = !stripOn
         if (wasStripOff) {
             stripOn = true
-            stripButton.text = "Вимкнути гірлянду"
+            bulbButton.setLit(stripOn)
             sendPowerCommand(true)
         }
         fireEnabled = !fireEnabled
@@ -898,7 +898,7 @@ class MainActivity : Activity() {
         deviceAdapter?.notifyDataSetChanged()
         fireButton.text = "Увімкнути ефект вогню"
         stripOn = true
-        stripButton.text = "Вимкнути гірлянду"
+        bulbButton.setLit(stripOn)
     }
 
     override fun onDestroy() {
