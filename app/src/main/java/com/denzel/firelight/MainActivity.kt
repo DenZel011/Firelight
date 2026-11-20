@@ -34,6 +34,8 @@ class MainActivity : Activity() {
     private var connected = false
     private var fireEnabled = false
     private var scanning = false
+    private var deviceAdapter: ArrayAdapter<String>? = null
+    private val deviceNames = listOf("ELK-BLEDOB", "Пристрій 2", "Пристрій 3", "Пристрій 4")
 
     private var red = 255
     private var green = 92
@@ -244,6 +246,42 @@ class MainActivity : Activity() {
 
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
+        addGap(connectionCard, 5)
+        connectionCard.addView(text("ПРИСТРІЙ", 10f, muted, true))
+        addGap(connectionCard, 3)
+        deviceAdapter = object : ArrayAdapter<String>(
+            this, android.R.layout.simple_spinner_item, deviceNames
+        ) {
+            override fun isEnabled(position: Int): Boolean = position == 0 && connected
+
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                return (super.getView(position, convertView, parent) as TextView).apply {
+                    text = deviceNames[position]
+                    textSize = 15f
+                    setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                }
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                return (super.getDropDownView(position, convertView, parent) as TextView).apply {
+                    text = if (position == 0 && connected) "ELK-BLEDOB  •  Підключено"
+                        else if (position == 0) "ELK-BLEDOB  •  Недоступний"
+                        else "${deviceNames[position]}  •  Недоступний"
+                    textSize = 14f
+                    setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                }
+            }
+        }.apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val deviceSpinner = Spinner(this).apply {
+            adapter = deviceAdapter
+            setSelection(0)
+            setBackground(rounded(Color.rgb(31, 36, 48), 14, Color.rgb(55, 63, 80)))
+        }
+        connectionCard.addView(deviceSpinner, LinearLayout.LayoutParams(-1, dp(46)))
         addGap(connectionCard, 5)
         status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
         connectionCard.addView(status)
@@ -534,6 +572,7 @@ class MainActivity : Activity() {
                 if (scanning) {
                     stopScan()
                     status.text = "ELK-BLEDOB не знайдено. Перевір, що контролер увімкнений."
+                    deviceAdapter?.notifyDataSetChanged()
                 }
             }, 10000)
         } catch (e: SecurityException) {
@@ -629,6 +668,7 @@ class MainActivity : Activity() {
 
                 runOnUiThread {
                     status.text = "Від'єднано"
+                    deviceAdapter?.notifyDataSetChanged()
                     fireButton.text = "Увімкнути ефект вогню"
                     stripButton.text = "Вимкнути гірлянду"
                 }
@@ -647,6 +687,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (characteristic != null) {
                     status.text = "Підключено до ELK-BLEDOB"
+                    deviceAdapter?.notifyDataSetChanged()
                     // The controller does not report its physical power state.
                     // Treat it as unknown/off after connecting so the first tap
                     // always sends a real POWER ON command (not another OFF).
@@ -835,6 +876,7 @@ class MainActivity : Activity() {
         connected = false
 
         status.text = "Статус: не підключено"
+        deviceAdapter?.notifyDataSetChanged()
         fireButton.text = "Увімкнути ефект вогню"
         stripOn = true
         stripButton.text = "Вимкнути гірлянду"
