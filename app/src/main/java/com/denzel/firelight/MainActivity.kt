@@ -246,7 +246,7 @@ class MainActivity : Activity() {
 
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
-        addGap(connectionCard, 5)
+        addGap(connectionCard, 8)
         deviceAdapter = object : ArrayAdapter<String>(
             this, android.R.layout.simple_spinner_item, deviceNames
         ) {
@@ -309,10 +309,10 @@ class MainActivity : Activity() {
             }, FrameLayout.LayoutParams(dp(36), -1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
-        addGap(connectionCard, 5)
+        addGap(connectionCard, 8)
         status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
         connectionCard.addView(status)
-        addGap(connectionCard, 8)
+        addGap(connectionCard, 10)
         val connectionActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
@@ -359,6 +359,7 @@ class MainActivity : Activity() {
         colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
             topMargin = dp(8)
             bottomMargin = dp(-8)
+            marginEnd = dp(8)
         })
         colorCard.addView(colorHeader)
         addGap(colorCard, 2)
@@ -392,7 +393,7 @@ class MainActivity : Activity() {
             setPadding(dp(12), dp(12), dp(12), dp(6))
         }
         tuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
-        addGap(tuningCard, 3)
+        addGap(tuningCard, 7)
 
         fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
@@ -432,6 +433,7 @@ class MainActivity : Activity() {
         addGap(tuningCard, 8)
         fireButton = actionButton("Увімкнути вогонь", true) { toggleFire() }
         tuningCard.addView(fireButton, LinearLayout.LayoutParams(-1, dp(40)))
+        addGap(tuningCard, 4)
         firePage.addView(tuningCard)
 
         // Bottom navigation stays visible on every page. Only the first page
