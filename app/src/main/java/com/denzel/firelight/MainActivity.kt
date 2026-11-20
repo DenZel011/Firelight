@@ -269,13 +269,8 @@ class MainActivity : Activity() {
         val firePage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-        val fireScroll = ScrollView(this).apply {
-            isFillViewport = true
-            clipToPadding = false
-            setPadding(0, dp(2), 0, dp(8))
-            addView(firePage, android.view.ViewGroup.LayoutParams(-1, -2))
-        }
-        pageHost.addView(fireScroll)
+        firePage.setPadding(0, dp(2), 0, dp(8))
+        pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         root.addView(pageHost)
 
         val colorCard = card()
@@ -382,7 +377,7 @@ class MainActivity : Activity() {
         fun selectTab(index: Int) {
             pageHost.removeAllViews()
             if (index == 0) {
-                pageHost.addView(fireScroll)
+                pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
             }
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
