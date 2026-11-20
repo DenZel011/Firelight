@@ -133,7 +133,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(22), dp(20), dp(30))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             setBackgroundColor(background)
         }
 
@@ -148,7 +148,7 @@ class MainActivity : Activity() {
 
         fun card(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             setBackground(rounded(panel, 24, Color.rgb(39, 45, 59)))
         }
 
@@ -187,20 +187,20 @@ class MainActivity : Activity() {
         }
         header.addView(live)
         root.addView(header)
-        addGap(root, 22)
+        addGap(root, 8)
 
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
-        addGap(connectionCard, 9)
+        addGap(connectionCard, 5)
         status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
         connectionCard.addView(status)
-        addGap(connectionCard, 14)
+        addGap(connectionCard, 8)
         val connectionActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
         val connectButton = actionButton("Підключити", true) { startScan() }
         val disconnectButton = actionButton("Від'єднати") { disconnect() }
-        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
             marginEnd = dp(8)
         })
         connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
@@ -208,16 +208,16 @@ class MainActivity : Activity() {
         })
         connectionCard.addView(connectionActions)
         root.addView(connectionCard)
-        addGap(root, 18)
+        addGap(root, 8)
 
         val colorCard = card()
         colorCard.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true))
-        addGap(colorCard, 6)
-        colorCard.addView(text("Обери свій відтінок", 21f, Color.WHITE, true))
-        addGap(colorCard, 16)
+        addGap(colorCard, 4)
+        colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
+        addGap(colorCard, 8)
 
         val wheelFrame = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(300))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(176))
         }
         val colorWheel = ColorWheelView(this) { selectedColor ->
             red = Color.red(selectedColor)
@@ -227,13 +227,13 @@ class MainActivity : Activity() {
             updatePreview()
             if (connected) sendCurrentColor()
         }
-        val wheelSize = dp(280)
+        val wheelSize = dp(168)
         wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
         colorCard.addView(wheelFrame)
 
         preview = text("●  RGB  $red  /  $green  /  $blue", 13f, Color.rgb(red, green, blue), true).apply {
             gravity = android.view.Gravity.CENTER
-            setPadding(0, dp(10), 0, dp(2))
+            setPadding(0, dp(5), 0, 0)
         }
         colorCard.addView(preview)
         root.addView(colorCard)
@@ -241,15 +241,15 @@ class MainActivity : Activity() {
 
         val tuningCard = card()
         tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
-        addGap(tuningCard, 12)
+        addGap(tuningCard, 3)
 
         fun addModernSlider(title: String, initial: Int, maxValue: Int, suffix: String, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
-            val titleView = text(title, 15f, Color.rgb(225, 230, 240), true)
-            val valueView = text("$initial$suffix", 14f, Color.WHITE, true)
+            val titleView = text(title, 13f, Color.rgb(225, 230, 240), true)
+            val valueView = text("$initial$suffix", 13f, Color.WHITE, true)
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             line.addView(valueView)
             tuningCard.addView(line)
@@ -258,8 +258,8 @@ class MainActivity : Activity() {
                 valueView.text = "$value$suffix"
                 changed(value)
             }
-            tuningCard.addView(slider, LinearLayout.LayoutParams(-1, dp(34)))
-            addGap(tuningCard, 14)
+            tuningCard.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
+            addGap(tuningCard, 8)
         }
 
         addModernSlider("Яскравість", brightness, 100, "%") {
@@ -275,13 +275,19 @@ class MainActivity : Activity() {
         val effectsCard = card()
         effectsCard.addView(text("ЕФЕКТИ ТА ЖИВЛЕННЯ", 11f, muted, true))
         addGap(effectsCard, 12)
-        fireButton = actionButton("Увімкнути ефект вогню", true) { toggleFire() }
-        effectsCard.addView(fireButton, LinearLayout.LayoutParams(-1, dp(54)))
-        addGap(effectsCard, 10)
+        val effectActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        fireButton = actionButton("Увімкнути вогонь", true) { toggleFire() }
+        effectActions.addView(fireButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            marginEnd = dp(5)
+        })
         stripButton = actionButton("Вимкнути гірлянду") { toggleStrip() }
-        effectsCard.addView(stripButton, LinearLayout.LayoutParams(-1, dp(54)))
-        addGap(effectsCard, 12)
-        effectsCard.addView(text("Вогонь працює у фоні, навіть коли ти перемикаєшся на інші застосунки.", 12f, muted))
+        effectActions.addView(stripButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            marginStart = dp(5)
+        })
+        effectsCard.addView(effectActions)
         root.addView(effectsCard)
 
         // Fixed screen: no vertical scrolling.
