@@ -79,6 +79,11 @@ class MainActivity : Activity() {
             deviceAdapter?.notifyDataSetChanged()
         }
     }
+    private val powerStateTimeout = Runnable {
+        if (connected && !stripStateKnown) {
+            status.text = "Підключено · контролер не передав стан стрічки"
+        }
+    }
 
     private val fireTask = object : Runnable {
         override fun run() {
@@ -779,7 +784,7 @@ class MainActivity : Activity() {
                             }
                         } catch (_: Exception) {}
                     }
-                    if (canRead) {
+                    if (canRead && !canNotify) {
                         try { g.readCharacteristic(powerState) } catch (_: Exception) {}
                     }
                     status.text = if (canNotify || canRead) {
@@ -787,6 +792,8 @@ class MainActivity : Activity() {
                     } else {
                         "Підключено · контролер не повідомляє стан"
                     }
+                    handler.removeCallbacks(powerStateTimeout)
+                    handler.postDelayed(powerStateTimeout, 1800L)
                 } else {
                     status.text = "Не знайдено FFF0 / FFF3"
                 }
@@ -798,6 +805,7 @@ class MainActivity : Activity() {
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
+            if (g !== this@MainActivity.gatt) return
             if (characteristic.uuid == powerNotifyUUID) {
                 updatePowerStateFromPacket(characteristic.value)
             }
@@ -808,6 +816,7 @@ class MainActivity : Activity() {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
+            if (g !== this@MainActivity.gatt) return
             if (characteristic.uuid == powerNotifyUUID) {
                 updatePowerStateFromPacket(value)
             }
@@ -819,6 +828,7 @@ class MainActivity : Activity() {
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
+            if (g !== this@MainActivity.gatt) return
             if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
                 updatePowerStateFromPacket(characteristic.value)
             }
@@ -830,8 +840,23 @@ class MainActivity : Activity() {
             value: ByteArray,
             status: Int
         ) {
+            if (g !== this@MainActivity.gatt) return
             if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
                 updatePowerStateFromPacket(value)
+            }
+        }
+
+        override fun onDescriptorWrite(
+            g: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (g !== this@MainActivity.gatt || status != BluetoothGatt.GATT_SUCCESS) return
+            val powerState = notifyCharacteristic ?: return
+            if (descriptor.uuid == cccdUUID &&
+                (powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0
+            ) {
+                try { g.readCharacteristic(powerState) } catch (_: Exception) {}
             }
         }
     }
@@ -846,6 +871,7 @@ class MainActivity : Activity() {
         }
         runOnUiThread {
             if (!connected) return@runOnUiThread
+            handler.removeCallbacks(powerStateTimeout)
             stripOn = isOn
             stripStateKnown = true
             bulbButton.setLit(isOn)
@@ -1052,6 +1078,7 @@ class MainActivity : Activity() {
         stopScan()
         fireEnabled = false
         handler.removeCallbacks(fireTask)
+        handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
         pendingPacket = null
         writeScheduled = false
@@ -1070,6 +1097,7 @@ class MainActivity : Activity() {
         stopScan()
         fireEnabled = false
         handler.removeCallbacks(fireTask)
+        handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
         try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
         super.onDestroy()
