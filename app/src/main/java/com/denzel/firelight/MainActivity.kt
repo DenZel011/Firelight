@@ -290,7 +290,7 @@ class MainActivity : Activity() {
             val device = result.device
 
             val name = try {
-                device.name
+                result.scanRecord?.deviceName ?: device.name
             } catch (e: SecurityException) {
                 null
             }
