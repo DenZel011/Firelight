@@ -40,6 +40,7 @@ class MainActivity : Activity() {
     private var blue = 12
     private var brightness = 100
     private var speed = 15
+    private var fireColorSpread = 25
     private var stripOn = true
     private lateinit var stripButton: Button
 
@@ -84,12 +85,12 @@ class MainActivity : Activity() {
                     roll < 0.34f -> Random.nextFloat() * 0.38f + 0.30f // ember dip
                     else -> Random.nextFloat() * 0.38f + 0.48f
                 }
-                fireHueTarget = when {
-                    roll < 0.13f -> Random.nextFloat() * 16f + 2f
-                    roll < 0.34f -> -(Random.nextFloat() * 23f + 5f)
-                    else -> Random.nextFloat() * 28f - 13f
-                }
-                fireSaturationTarget = Random.nextFloat() * 0.16f + 0.82f
+                // Color spread is user-controlled: 0 keeps the exact selected hue
+                // and saturation; 100 allows the full hue wheel to appear.
+                val spread = fireColorSpread.coerceIn(0, 100) / 100f
+                val hueRange = 180f * spread
+                fireHueTarget = if (spread == 0f) 0f else Random.nextFloat() * hueRange * 2f - hueRange
+                fireSaturationTarget = 1f - Random.nextFloat() * 0.42f * spread
                 // Most flickers stay sharp; occasionally the flame rolls gently
                 // into its next state, like a slower, softer tongue of fire.
                 fireSmoothingMs = if (Random.nextFloat() < 0.32f) {
@@ -116,7 +117,7 @@ class MainActivity : Activity() {
             val hsv = FloatArray(3)
             Color.RGBToHSV(red, green, blue, hsv)
             val hue = (hsv[0] + fireHueShift + 360f) % 360f
-            val saturation = (hsv[1] * fireSaturation).coerceIn(0.72f, 1f)
+            val saturation = (hsv[1] * fireSaturation).coerceIn(0f, 1f)
             val rgb = Color.HSVToColor(floatArrayOf(hue, saturation, level))
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
             handler.postDelayed(this, nextFireTick())
@@ -127,8 +128,8 @@ class MainActivity : Activity() {
         fireLevelTarget = 0.76f
         fireHueShift = 0f
         fireHueTarget = 0f
-        fireSaturation = 0.94f
-        fireSaturationTarget = 0.94f
+        fireSaturation = 1f
+        fireSaturationTarget = 1f
         fireNextChangeAt = 0L
         fireLastTickAt = 0L
         fireFlare = 0f
@@ -320,6 +321,15 @@ class MainActivity : Activity() {
         }
         addModernSlider("Швидкість вогню", speed - 10, 10, "/10") {
             speed = (it + 10).coerceIn(11, 20)
+        }
+        addModernSlider("Розкид кольорів вогню", fireColorSpread, 100, "%") {
+            fireColorSpread = it.coerceIn(0, 100)
+            if (fireEnabled) {
+                fireHueTarget = 0f
+                fireSaturationTarget = 1f
+                fireHueShift *= fireColorSpread / 100f
+                fireSaturation = 1f - (1f - fireSaturation) * fireColorSpread / 100f
+            }
         }
         root.addView(tuningCard)
         addGap(root, 18)
