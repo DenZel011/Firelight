@@ -7,8 +7,6 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.pm.PackageManager
-import android.location.LocationManager
-import android.provider.Settings
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -40,7 +38,7 @@ class MainActivity : Activity() {
     private var red = 255
     private var green = 92
     private var blue = 12
-    private var brightness = 75
+    private var brightness = 100
     private var speed = 8
 
     private var fireFrom = intArrayOf(255, 95, 8)
@@ -51,8 +49,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var fireButton: Button
     private lateinit var preview: TextView
-    private lateinit var devicesContainer: LinearLayout
-    private val discoveredDevices = LinkedHashMap<String, Pair<BluetoothDevice, Int>>()
+    private var pendingPacket: ByteArray? = null
+    private var writeScheduled = false
+    private var lastWriteAt = 0L
+    private val targetAddress = "BE:27:8A:00:73:DE"
 
     private val fireTask = object : Runnable {
         override fun run() {
@@ -67,8 +67,8 @@ class MainActivity : Activity() {
                 fireTo = nextFireColor()
                 fireTransitionStart = now
                 fireTransitionDuration = Random.nextLong(
-                    (850L - speed * 25L).coerceAtLeast(250L),
-                    (1900L - speed * 20L).coerceAtLeast(700L)
+                    (180L - speed * 3L).coerceAtLeast(120L),
+                    (520L - speed * 5L).coerceAtLeast(300L)
                 )
                 progress = 0f
             }
@@ -80,7 +80,7 @@ class MainActivity : Activity() {
                     .toInt().coerceIn(0, 255)
 
             sendRGB(blend(0), blend(1), blend(2))
-            handler.postDelayed(this, 25L)
+            handler.postDelayed(this, 70L)
         }
     }
 
@@ -165,16 +165,10 @@ class MainActivity : Activity() {
         root.addView(status)
 
         root.addView(
-            button("Знайти BLE-пристрої") {
+            button("Підключити ELK-BLEDOB") {
                 startScan()
             }
         )
-
-        root.addView(label("ЗНАЙДЕНІ BLE-ПРИСТРОЇ", 18f))
-        devicesContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        root.addView(devicesContainer)
 
         root.addView(
             button("Від'єднати") {
@@ -184,7 +178,7 @@ class MainActivity : Activity() {
 
         root.addView(label("КЕРУВАННЯ КОЛЬОРОМ", 20f))
 
-        preview = label("● Поточний колір", 20f)
+        preview = label("RGB: $red, $green, $blue", 16f)
         root.addView(preview)
 
         val colorWheel = ColorWheelView(this) { selectedColor ->
@@ -294,30 +288,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val locationEnabled = try {
-            if (Build.VERSION.SDK_INT >= 28) {
-                (getSystemService(Context.LOCATION_SERVICE) as LocationManager).isLocationEnabled
-            } else {
-                Settings.Secure.getInt(
-                    contentResolver,
-                    Settings.Secure.LOCATION_MODE,
-                    Settings.Secure.LOCATION_MODE_OFF
-                ) != Settings.Secure.LOCATION_MODE_OFF
-            }
-        } catch (_: Exception) {
-            true
-        }
-
-        if (!locationEnabled) {
-            status.text = "Увімкни геолокацію в швидких налаштуваннях Android і повтори пошук."
-            Toast.makeText(this, "Для BLE-пошуку на цьому Android потрібна увімкнена геолокація", Toast.LENGTH_LONG).show()
-            return
-        }
-
         stopScan()
-        discoveredDevices.clear()
-        renderDiscoveredDevices()
-
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
         if (activeScanner == null) {
@@ -325,131 +296,52 @@ class MainActivity : Activity() {
             return
         }
 
-        status.text = "Статус: пошук BLE-пристроїв..."
+        status.text = "Шукаю тільки ELK-BLEDOB ($targetAddress)..."
         scanning = true
-
         try {
+            val filter = ScanFilter.Builder().setDeviceAddress(targetAddress).build()
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
-
-            activeScanner.startScan(null, settings, scanCallback)
-
+            activeScanner.startScan(listOf(filter), settings, scanCallback)
             handler.postDelayed({
                 if (scanning) {
                     stopScan()
-                    status.text = if (discoveredDevices.isEmpty()) {
-                        "Нічого не знайдено. Перевір дозволи та Bluetooth."
-                    } else {
-                        "Пошук завершено. Знайдено: ${discoveredDevices.size}"
-                    }
+                    status.text = "ELK-BLEDOB не знайдено. Перевір, що контролер увімкнений."
                 }
-            }, 15000)
-
+            }, 10000)
         } catch (e: SecurityException) {
             scanning = false
             status.text = "Немає дозволу Bluetooth"
         } catch (e: Exception) {
             scanning = false
-            status.text = "Помилка запуску пошуку: ${e.message}"
+            status.text = "Помилка пошуку: ${e.message}"
         }
     }
 
     private val scanCallback = object : ScanCallback() {
-
-        override fun onScanResult(
-            callbackType: Int,
-            result: ScanResult
-        ) {
-            addDiscoveredDevice(result)
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val address = try { result.device.address } catch (_: SecurityException) { "" }
+            if (address.equals(targetAddress, ignoreCase = true)) {
+                stopScan()
+                runOnUiThread {
+                    status.text = "Знайшов ELK-BLEDOB. Підключаюся..."
+                    connect(result.device)
+                }
+            }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
-            results.forEach { addDiscoveredDevice(it) }
+            results.firstOrNull {
+                try { it.device.address.equals(targetAddress, ignoreCase = true) }
+                catch (_: SecurityException) { false }
+            }?.let { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
 
         override fun onScanFailed(errorCode: Int) {
             scanning = false
-            runOnUiThread {
-                val reason = when (errorCode) {
-                    SCAN_FAILED_ALREADY_STARTED -> "сканування вже запущене"
-                    SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "Android не зареєстрував BLE-сканер"
-                    SCAN_FAILED_INTERNAL_ERROR -> "внутрішня помилка Bluetooth"
-                    SCAN_FAILED_FEATURE_UNSUPPORTED -> "BLE-сканування не підтримується"
-                    SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "немає ресурсів BLE"
-                    else -> "код $errorCode"
-                }
-                status.text = "Помилка BLE: $reason"
-            }
-        }
-    }
-
-    private fun addDiscoveredDevice(result: ScanResult) {
-        val device = result.device
-        val address = try {
-            device.address
-        } catch (_: SecurityException) {
-            return
-        }
-
-        discoveredDevices[address] = Pair(device, result.rssi)
-
-        runOnUiThread {
-            renderDiscoveredDevices()
-            if (scanning) {
-                status.text = "Пошук... Знайдено пристроїв: ${discoveredDevices.size}"
-            }
-        }
-    }
-
-    private fun renderDiscoveredDevices() {
-        if (!::devicesContainer.isInitialized) return
-
-        devicesContainer.removeAllViews()
-
-        if (discoveredDevices.isEmpty()) {
-            val empty = TextView(this).apply {
-                text = "Поки нічого не знайдено"
-                textSize = 14f
-                setTextColor(Color.LTGRAY)
-                setPadding(0, 4, 0, 12)
-            }
-            devicesContainer.addView(empty)
-            return
-        }
-
-        discoveredDevices.forEach { (address, data) ->
-            val device = data.first
-            val rssi = data.second
-            val name = try {
-                device.name
-                    ?: discoveredDevices[address]?.first?.let { resultName ->
-                        resultName.name
-                    }
-                    ?: "Без назви"
-            } catch (_: SecurityException) {
-                "Без назви"
-            }
-
-            val item = TextView(this).apply {
-                text = "$name\n$address  •  $rssi dBm\nНатисни, щоб підключитися"
-                textSize = 14f
-                setTextColor(Color.WHITE)
-                setPadding(12, 12, 12, 12)
-                setBackgroundColor(Color.rgb(42, 46, 54))
-                setOnClickListener {
-                    stopScan()
-                    connect(device)
-                }
-            }
-
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            params.bottomMargin = 8
-            devicesContainer.addView(item, params)
+            runOnUiThread { status.text = "Помилка BLE-сканування: $errorCode" }
         }
     }
 
@@ -492,6 +384,7 @@ class MainActivity : Activity() {
         ) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 connected = true
+                try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
 
                 runOnUiThread {
                     status.text = "Підключено. Пошук характеристик..."
@@ -540,48 +433,68 @@ class MainActivity : Activity() {
     }
 
     private fun sendRGB(r: Int, g: Int, b: Int) {
-        val char = characteristic ?: return
-
+        if (characteristic == null || gatt == null) return
         val factor = brightness / 100.0
-
         val rr = (r * factor).toInt().coerceIn(0, 255)
         val gg = (g * factor).toInt().coerceIn(0, 255)
         val bb = (b * factor).toInt().coerceIn(0, 255)
 
-        val packet = byteArrayOf(
-            0x7E,
-            0x07,
-            0x05,
-            0x03,
-            rr.toByte(),
-            gg.toByte(),
-            bb.toByte(),
-            0x10,
-            0xEF.toByte()
+        pendingPacket = byteArrayOf(
+            0x7E, 0x07, 0x05, 0x03,
+            rr.toByte(), gg.toByte(), bb.toByte(),
+            0x10, 0xEF.toByte()
         )
 
+        if (!writeScheduled) {
+            writeScheduled = true
+            val wait = (65L - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
+            handler.postDelayed({ flushPendingColor() }, wait)
+        }
+    }
+
+    private fun flushPendingColor() {
+        writeScheduled = false
+        val packet = pendingPacket ?: return
+        pendingPacket = null
+        val g = gatt ?: return
+        val char = characteristic ?: return
+
         try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                gatt?.writeCharacteristic(
-                    char,
-                    packet,
-                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                )
+            val supportsNoResponse =
+                (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+            val writeType = if (supportsNoResponse) {
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            } else {
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            }
+
+            val result = if (Build.VERSION.SDK_INT >= 33) {
+                g.writeCharacteristic(char, packet, writeType)
             } else {
                 @Suppress("DEPRECATION")
-                char.writeType =
-                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-
+                char.writeType = writeType
                 @Suppress("DEPRECATION")
                 char.value = packet
-
                 @Suppress("DEPRECATION")
-                gatt?.writeCharacteristic(char)
+                if (g.writeCharacteristic(char)) BluetoothGatt.GATT_SUCCESS
+                else BluetoothGatt.GATT_FAILURE
+            }
+
+            lastWriteAt = SystemClock.uptimeMillis()
+            if (result != BluetoothGatt.GATT_SUCCESS) {
+                runOnUiThread { status.text = "BLE не прийняв колір (код $result)" }
+            } else {
+                runOnUiThread {
+                    status.text = "Підключено • RGB ${packet[4].toInt() and 255}, ${packet[5].toInt() and 255}, ${packet[6].toInt() and 255}"
+                }
             }
         } catch (_: SecurityException) {
-            runOnUiThread {
-                status.text = "Помилка Bluetooth"
-            }
+            runOnUiThread { status.text = "Помилка дозволу на запис Bluetooth" }
+        }
+
+        if (pendingPacket != null && !writeScheduled) {
+            writeScheduled = true
+            handler.postDelayed({ flushPendingColor() }, 65L)
         }
     }
 
@@ -621,7 +534,7 @@ class MainActivity : Activity() {
 
     private fun updatePreview() {
         preview.setTextColor(Color.rgb(red, green, blue))
-        preview.text = "● Поточний колір"
+        preview.text = "● RGB: $red, $green, $blue"
     }
 
     private fun disconnect() {
@@ -637,6 +550,8 @@ class MainActivity : Activity() {
 
         gatt = null
         characteristic = null
+        pendingPacket = null
+        writeScheduled = false
         connected = false
 
         status.text = "Статус: не підключено"
