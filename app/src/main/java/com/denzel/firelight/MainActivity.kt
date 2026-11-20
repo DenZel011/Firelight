@@ -340,19 +340,23 @@ class MainActivity : Activity() {
 
         val colorCard = card().apply {
             setPadding(dp(12), dp(2), dp(12), dp(6))
+            clipChildren = false
+            clipToPadding = false
         }
         val colorHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
         }
         colorHeader.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true),
             LinearLayout.LayoutParams(0, -2, 1f))
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-            topMargin = dp(8)
-        })
+        // Keep the toggle at its natural 40dp size; the header itself
+        // provides the alignment so no extra margin can push it against an edge.
+        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         colorCard.addView(colorHeader)
         addGap(colorCard, 2)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
