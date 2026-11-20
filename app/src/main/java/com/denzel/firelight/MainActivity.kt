@@ -437,11 +437,13 @@ class MainActivity : Activity() {
                 connected = false
                 characteristic = null
                 fireEnabled = false
+                stripOn = true
                 handler.removeCallbacks(fireTask)
 
                 runOnUiThread {
                     status.text = "Від'єднано"
                     fireButton.text = "Увімкнути ефект вогню"
+                    stripButton.text = "Вимкнути гірлянду"
                 }
 
                 g.close()
@@ -552,7 +554,8 @@ class MainActivity : Activity() {
                 fireTo = nextFireColor()
                 fireTransitionStart = SystemClock.uptimeMillis()
                 fireTransitionDuration = nextTransitionDuration()
-                if (!handler.hasCallbacks(fireTask)) fireTask.run()
+                handler.removeCallbacks(fireTask)
+                fireTask.run()
             } else {
                 sendCurrentColor()
             }
