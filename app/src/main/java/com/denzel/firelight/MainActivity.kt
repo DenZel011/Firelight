@@ -40,7 +40,7 @@ class MainActivity : Activity() {
     private var blue = 12
     private var brightness = 100
     private var speed = 15
-    private var fireColorSpread = 25
+    private var fireColorSpread = 0
     private var stripOn = true
     private lateinit var stripButton: Button
 
