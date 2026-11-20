@@ -40,6 +40,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var fireButton: Button
     private lateinit var preview: TextView
+    private lateinit var devicesContainer: LinearLayout
+    private val discoveredDevices = LinkedHashMap<String, Pair<BluetoothDevice, Int>>()
 
     private val fireTask = object : Runnable {
         override fun run() {
@@ -129,10 +131,16 @@ class MainActivity : Activity() {
         root.addView(status)
 
         root.addView(
-            button("Знайти ELK-BLEDOB") {
+            button("Знайти BLE-пристрої") {
                 startScan()
             }
         )
+
+        root.addView(label("ЗНАЙДЕНІ BLE-ПРИСТРОЇ", 18f))
+        devicesContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        root.addView(devicesContainer)
 
         root.addView(
             button("Від'єднати") {
@@ -247,7 +255,6 @@ class MainActivity : Activity() {
 
         val manager =
             getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-
         val adapter = manager.adapter
 
         if (!adapter.isEnabled) {
@@ -259,25 +266,45 @@ class MainActivity : Activity() {
             return
         }
 
-        scanner = adapter.bluetoothLeScanner
+        stopScan()
+        discoveredDevices.clear()
+        renderDiscoveredDevices()
 
-        status.text = "Статус: пошук контролера..."
+        scanner = adapter.bluetoothLeScanner
+        val activeScanner = scanner
+        if (activeScanner == null) {
+            status.text = "BLE-сканер недоступний"
+            return
+        }
+
+        status.text = "Статус: пошук BLE-пристроїв..."
         scanning = true
 
         try {
-            scanner?.startScan(scanCallback)
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setReportDelay(0)
+                .build()
+
+            activeScanner.startScan(null, settings, scanCallback)
 
             handler.postDelayed({
                 if (scanning) {
                     stopScan()
-                    if (!connected) {
-                        status.text = "Контролер не знайдено"
+                    status.text = if (discoveredDevices.isEmpty()) {
+                        "Нічого не знайдено. Перевір дозволи та Bluetooth."
+                    } else {
+                        "Пошук завершено. Знайдено: ${discoveredDevices.size}"
                     }
                 }
-            }, 12000)
+            }, 15000)
 
         } catch (e: SecurityException) {
+            scanning = false
             status.text = "Немає дозволу Bluetooth"
+        } catch (e: Exception) {
+            scanning = false
+            status.text = "Помилка запуску пошуку: ${e.message}"
         }
     }
 
@@ -287,33 +314,82 @@ class MainActivity : Activity() {
             callbackType: Int,
             result: ScanResult
         ) {
-            val device = result.device
+            addDiscoveredDevice(result)
+        }
 
-            val name = try {
-                result.scanRecord?.deviceName ?: device.name
-            } catch (e: SecurityException) {
-                null
-            }
-
-            val address = try {
-    device.address
-} catch (e: SecurityException) {
-    null
-}
-
-if (name?.trim()?.equals("ELK-BLEDOB", ignoreCase = true) == true ||
-    address?.equals("BE:27:8A:00:73:DE", ignoreCase = true) == true
-) {
-    stopScan()
-    connect(device)
-}
+        override fun onBatchScanResults(results: MutableList<ScanResult>) {
+            results.forEach { addDiscoveredDevice(it) }
         }
 
         override fun onScanFailed(errorCode: Int) {
             scanning = false
             runOnUiThread {
-                status.text = "Помилка пошуку: $errorCode"
+                status.text = "Помилка пошуку BLE: $errorCode"
             }
+        }
+    }
+
+    private fun addDiscoveredDevice(result: ScanResult) {
+        val device = result.device
+        val address = try {
+            device.address
+        } catch (_: SecurityException) {
+            return
+        }
+
+        discoveredDevices[address] = Pair(device, result.rssi)
+
+        runOnUiThread {
+            renderDiscoveredDevices()
+            if (scanning) {
+                status.text = "Пошук... Знайдено пристроїв: ${discoveredDevices.size}"
+            }
+        }
+    }
+
+    private fun renderDiscoveredDevices() {
+        if (!::devicesContainer.isInitialized) return
+
+        devicesContainer.removeAllViews()
+
+        if (discoveredDevices.isEmpty()) {
+            val empty = TextView(this).apply {
+                text = "Поки нічого не знайдено"
+                textSize = 14f
+                setTextColor(Color.LTGRAY)
+                setPadding(0, 4, 0, 12)
+            }
+            devicesContainer.addView(empty)
+            return
+        }
+
+        discoveredDevices.forEach { (address, data) ->
+            val device = data.first
+            val rssi = data.second
+            val name = try {
+                device.name ?: "Без назви"
+            } catch (_: SecurityException) {
+                "Без назви"
+            }
+
+            val item = TextView(this).apply {
+                text = "$name\n$address  •  $rssi dBm\nНатисни, щоб підключитися"
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(12, 12, 12, 12)
+                setBackgroundColor(Color.rgb(42, 46, 54))
+                setOnClickListener {
+                    stopScan()
+                    connect(device)
+                }
+            }
+
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            params.bottomMargin = 8
+            devicesContainer.addView(item, params)
         }
     }
 
@@ -325,6 +401,7 @@ if (name?.trim()?.equals("ELK-BLEDOB", ignoreCase = true) == true ||
         try {
             scanner?.stopScan(scanCallback)
         } catch (_: SecurityException) {
+        } catch (_: Exception) {
         }
     }
 
