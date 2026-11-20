@@ -44,7 +44,7 @@ class MainActivity : Activity() {
     private var speed = 15
     private var fireColorSpread = 0
     private var stripOn = true
-    private lateinit var stripButton: Button
+    private lateinit var bulbButton: BulbToggleView
 
     private var fireFrom = intArrayOf(255, 95, 8)
     private var fireTo = intArrayOf(235, 55, 3)
@@ -188,7 +188,7 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(48), dp(12), dp(8))
+            setPadding(dp(12), dp(42), dp(12), dp(8))
             setBackgroundColor(background)
         }
 
@@ -285,13 +285,15 @@ class MainActivity : Activity() {
             setPadding(0, 0, dp(28), 0)
             dropDownWidth = resources.displayMetrics.widthPixels - dp(48)
             dropDownHorizontalOffset = 0
-            dropDownVerticalOffset = dp(4)
+            dropDownVerticalOffset = dp(42)
             setPopupBackgroundDrawable(rounded(Color.rgb(17, 21, 30), 16, Color.rgb(61, 70, 88)))
         }
         val deviceField = FrameLayout(this).apply {
             addView(deviceSpinner, FrameLayout.LayoutParams(-1, dp(38)))
             addView(text("⌄", 22f, Color.rgb(190, 199, 215), true).apply {
                 gravity = android.view.Gravity.CENTER
+                includeFontPadding = false
+                setPadding(0, 0, 0, 0)
             }, FrameLayout.LayoutParams(dp(36), -1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
@@ -304,10 +306,10 @@ class MainActivity : Activity() {
         }
         val connectButton = actionButton("Підключити", true) { startScan() }
         val disconnectButton = actionButton("Від'єднати") { disconnect() }
-        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
             marginEnd = dp(8)
         })
-        connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+        connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
             marginStart = dp(8)
         })
         connectionCard.addView(connectionActions)
@@ -325,7 +327,17 @@ class MainActivity : Activity() {
         root.addView(pageHost)
 
         val colorCard = card()
-        colorCard.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true))
+        val colorHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        colorHeader.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
+            setLit(stripOn)
+        }
+        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(42), dp(42)))
+        colorCard.addView(colorHeader)
         addGap(colorCard, 4)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
         addGap(colorCard, 8)
@@ -403,13 +415,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
         fireButton = actionButton("Увімкнути вогонь", true) { toggleFire() }
-        effectActions.addView(fireButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-            marginEnd = dp(5)
-        })
-        stripButton = actionButton("Вимкнути гірлянду") { toggleStrip() }
-        effectActions.addView(stripButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-            marginStart = dp(5)
-        })
+        effectActions.addView(fireButton, LinearLayout.LayoutParams(-1, dp(40)))
         effectsCard.addView(effectActions)
         firePage.addView(effectsCard)
 
@@ -683,7 +689,7 @@ class MainActivity : Activity() {
                     status.text = "Від'єднано"
                     deviceAdapter?.notifyDataSetChanged()
                     fireButton.text = "Увімкнути ефект вогню"
-                    stripButton.text = "Вимкнути гірлянду"
+                    bulbButton.setLit(stripOn)
                 }
 
                 g.close()
@@ -705,7 +711,7 @@ class MainActivity : Activity() {
                     // Treat it as unknown/off after connecting so the first tap
                     // always sends a real POWER ON command (not another OFF).
                     stripOn = false
-                    stripButton.text = "Увімкнути гірлянду"
+                    bulbButton.setLit(stripOn)
                     sendCurrentColor()
                 } else {
                     status.text = "Не знайдено FFF0 / FFF3"
@@ -903,6 +909,75 @@ class MainActivity : Activity() {
     }
 }
 
+
+/** Square power toggle with a filled/outline bulb state. */
+private class BulbToggleView(
+    context: Context,
+    private val onToggle: () -> Unit
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var lit = true
+    private val accent = Color.rgb(255, 142, 105)
+    private val dim = Color.rgb(151, 160, 178)
+
+    init {
+        isClickable = true
+        isFocusable = true
+        contentDescription = "Увімкнути або вимкнути гірлянду"
+        setOnClickListener { onToggle() }
+    }
+
+    fun setLit(value: Boolean) {
+        lit = value
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val side = minOf(w, h)
+        val left = (w - side) / 2f
+        val top = (h - side) / 2f
+        val radius = 12f * density
+        paint.style = Paint.Style.FILL
+        paint.color = if (lit) Color.rgb(55, 39, 39) else Color.rgb(29, 34, 46)
+        canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1f * density
+        paint.color = if (lit) Color.rgb(111, 68, 60) else Color.rgb(61, 70, 88)
+        canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
+
+        val cx = w / 2f
+        val cy = h / 2f - 2f * density
+        val bulb = android.graphics.Path().apply {
+            moveTo(cx - 8f * density, cy + 1f * density)
+            cubicTo(cx - 8f * density, cy - 5f * density, cx - 4f * density, cy - 10f * density, cx, cy - 10f * density)
+            cubicTo(cx + 5f * density, cy - 10f * density, cx + 8f * density, cy - 5f * density, cx + 8f * density, cy + 1f * density)
+            cubicTo(cx + 8f * density, cy + 5f * density, cx + 4f * density, cy + 7f * density, cx + 3f * density, cy + 9f * density)
+            lineTo(cx - 3f * density, cy + 9f * density)
+            cubicTo(cx - 4f * density, cy + 7f * density, cx - 8f * density, cy + 5f * density, cx - 8f * density, cy + 1f * density)
+            close()
+        }
+        paint.color = if (lit) accent else dim
+        paint.style = if (lit) Paint.Style.FILL else Paint.Style.STROKE
+        paint.strokeWidth = 2f * density
+        if (lit) {
+            paint.setShadowLayer(7f * density, 0f, 0f, 0x66FF8E69)
+            canvas.drawPath(bulb, paint)
+            paint.clearShadowLayer()
+        } else {
+            canvas.drawPath(bulb, paint)
+        }
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f * density
+        paint.strokeCap = Paint.Cap.ROUND
+        canvas.drawLine(cx - 3f * density, cy + 11f * density, cx + 3f * density, cy + 11f * density, paint)
+        canvas.drawLine(cx - 2f * density, cy + 14f * density, cx + 2f * density, cy + 14f * density, paint)
+        paint.style = Paint.Style.FILL
+    }
+}
 
 /** Minimal monochrome flame glyph used by the bottom navigation. */
 private class FlameGlyphView(context: Context) : View(context) {
