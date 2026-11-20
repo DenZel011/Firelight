@@ -74,36 +74,41 @@ class MainActivity : Activity() {
                 else (now - fireLastTickAt).coerceIn(1L, 250L)
             fireLastTickAt = now
 
-            // Slow breathing mixed with irregular flicker and rare short flare-ups.
+            // Fast, irregular flame flicker. The previous speed factor was inverted:
+            // at the fastest slider setting it actually waited several seconds.
             if (now >= fireNextChangeAt) {
                 val roll = Random.nextFloat()
                 fireLevelTarget = when {
-                    roll < 0.075f -> Random.nextFloat() * 0.12f + 0.86f
-                    roll < 0.16f -> Random.nextFloat() * 0.13f + 0.43f
-                    else -> Random.nextFloat() * 0.25f + 0.59f
+                    roll < 0.13f -> Random.nextFloat() * 0.42f + 0.56f // quick flare
+                    roll < 0.34f -> Random.nextFloat() * 0.38f + 0.30f // ember dip
+                    else -> Random.nextFloat() * 0.38f + 0.48f
                 }
-                fireHueTarget = Random.nextFloat() * 10f - 5f
-                fireSaturationTarget = Random.nextFloat() * 0.10f + 0.88f
-                if (roll < 0.075f) fireFlare = Random.nextFloat() * 0.20f + 0.10f
-                val interval = Random.nextLong(180L, 460L)
-                val speedFactor = (21 - speed).toFloat() / 10f
-                fireNextChangeAt = now + (interval / speedFactor).toLong().coerceAtLeast(90L)
+                fireHueTarget = when {
+                    roll < 0.13f -> Random.nextFloat() * 16f + 2f
+                    roll < 0.34f -> -(Random.nextFloat() * 23f + 5f)
+                    else -> Random.nextFloat() * 28f - 13f
+                }
+                fireSaturationTarget = Random.nextFloat() * 0.16f + 0.82f
+                if (roll < 0.13f) fireFlare = Random.nextFloat() * 0.24f + 0.12f
+                val interval = 330L - (speed.coerceIn(11, 20) - 11) * 28L
+                fireNextChangeAt = now + Random.nextLong((interval * 0.55f).toLong().coerceAtLeast(45L),
+                    (interval * 1.15f).toLong().coerceAtLeast(70L))
             }
 
-            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / 190f)
+            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / 72f)
             fireLevel += (fireLevelTarget - fireLevel) * blend
-            fireHueShift += (fireHueTarget - fireHueShift) * (blend * 0.65f)
+            fireHueShift += (fireHueTarget - fireHueShift) * (blend * 0.9f)
             fireSaturation += (fireSaturationTarget - fireSaturation) * blend
-            fireFlare *= kotlin.math.exp(-elapsed.toFloat() / 260f)
+            fireFlare *= kotlin.math.exp(-elapsed.toFloat() / 150f)
 
-            val slowWave = kotlin.math.sin(now / 730.0).toFloat() * 0.035f
-            val secondaryWave = kotlin.math.sin(now / 173.0).toFloat() * 0.018f
-            val level = (fireLevel + slowWave + secondaryWave + fireFlare).coerceIn(0.34f, 1f)
+            val slowWave = kotlin.math.sin(now / 510.0).toFloat() * 0.045f
+            val secondaryWave = kotlin.math.sin(now / 91.0).toFloat() * 0.035f
+            val level = (fireLevel + slowWave + secondaryWave + fireFlare).coerceIn(0.22f, 1f)
 
             val hsv = FloatArray(3)
             Color.RGBToHSV(red, green, blue, hsv)
             val hue = (hsv[0] + fireHueShift + 360f) % 360f
-            val saturation = (hsv[1] * fireSaturation).coerceIn(0.12f, 1f)
+            val saturation = (hsv[1] * fireSaturation).coerceIn(0.72f, 1f)
             val rgb = Color.HSVToColor(floatArrayOf(hue, saturation, level))
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
             handler.postDelayed(this, nextFireTick())
@@ -136,7 +141,7 @@ class MainActivity : Activity() {
 
     // 1 = slow, 20 = fast. Both the flicker interval and transition duration
     // respond to the slider; the BLE writer still coalesces packets safely.
-    private fun nextFireTick(): Long = (145L - speed * 4L).coerceIn(65L, 101L)
+    private fun nextFireTick(): Long = (132L - (speed.coerceIn(11, 20) - 11) * 8L).coerceIn(52L, 132L)
 
     private fun nextTransitionDuration(): Long {
         val base = 2600L - speed * 115L
@@ -777,6 +782,21 @@ private class ColorWheelView(
         setMeasuredDimension(side, side)
     }
 
+    // Expand the pure-red sector so it is easier to select. This same mapping
+    // is used for both the pixels drawn on the wheel and the RGB sent on touch.
+    private fun wheelHue(angle: Float): Float {
+        val a = ((angle % 360f) + 360f) % 360f
+        val points = floatArrayOf(0f, 34f, 94f, 154f, 214f, 274f, 334f, 360f)
+        val hues = floatArrayOf(0f, 0f, 60f, 120f, 180f, 240f, 300f, 360f)
+        for (i in 0 until points.size - 1) {
+            if (a <= points[i + 1]) {
+                val t = (a - points[i]) / (points[i + 1] - points[i])
+                return hues[i] + (hues[i + 1] - hues[i]) * t
+            }
+        }
+        return 0f
+    }
+
     private fun makeWheel(side: Int) {
         if (side <= 0) return
         val pixels = IntArray(side * side)
@@ -790,7 +810,8 @@ private class ColorWheelView(
                 val distance = kotlin.math.sqrt(dx * dx + dy * dy)
                 val index = y * side + x
                 if (distance <= radius) {
-                    hsv[0] = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+                    val angle = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+                    hsv[0] = wheelHue(angle)
                     hsv[1] = (distance / radius).coerceIn(0f, 1f)
                     pixels[index] = Color.HSVToColor(hsv)
                 } else {
@@ -856,7 +877,8 @@ private class ColorWheelView(
         val dy = radius - touchY
         val distance = kotlin.math.sqrt(dx * dx + dy * dy)
         selectedSaturation = (distance / radius).coerceIn(0f, 1f)
-        selectedHue = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+        val angle = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+        selectedHue = wheelHue(angle)
         onColorSelected(Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f)))
         invalidate()
     }
