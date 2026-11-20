@@ -117,84 +117,108 @@ class MainActivity : Activity() {
     }
 
     private fun createInterface() {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        fun rounded(color: Int, radius: Int = 22, stroke: Int? = null): android.graphics.drawable.GradientDrawable =
+            android.graphics.drawable.GradientDrawable().apply {
+                setColor(color)
+                cornerRadius = dp(radius).toFloat()
+                if (stroke != null) setStroke(dp(1), stroke)
+            }
+
+        val background = Color.rgb(10, 12, 18)
+        val panel = Color.rgb(22, 26, 36)
+        val muted = Color.rgb(151, 160, 178)
+        val accent = Color.rgb(255, 111, 66)
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 28, 24, 24)
-            setBackgroundColor(Color.rgb(18, 20, 25))
+            setPadding(dp(20), dp(22), dp(20), dp(30))
+            setBackgroundColor(background)
         }
 
-        fun label(text: String, size: Float = 16f): TextView {
-            return TextView(this).apply {
-                this.text = text
+        fun text(value: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false): TextView =
+            TextView(this).apply {
+                text = value
                 textSize = size
-                setTextColor(Color.WHITE)
-                setPadding(0, 12, 0, 8)
+                setTextColor(color)
+                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                includeFontPadding = false
             }
+
+        fun card(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = rounded(panel, 24, Color.rgb(39, 45, 59))
         }
 
-        fun button(text: String, action: () -> Unit): Button {
-            return Button(this).apply {
-                this.text = text
+        fun addGap(parent: LinearLayout, height: Int) {
+            parent.addView(View(this), LinearLayout.LayoutParams(1, dp(height)))
+        }
+
+        fun actionButton(title: String, primary: Boolean = false, action: () -> Unit): Button =
+            Button(this).apply {
+                text = title
+                isAllCaps = false
+                textSize = 15f
+                setTextColor(if (primary) Color.WHITE else Color.rgb(222, 228, 239))
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                background = rounded(if (primary) accent else Color.rgb(37, 43, 57), 17,
+                    if (primary) null else Color.rgb(55, 63, 80))
+                stateListAnimator = null
+                elevation = 0f
+                setPadding(dp(16), 0, dp(16), 0)
+                minHeight = dp(54)
                 setOnClickListener { action() }
             }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
         }
-
-        fun addSlider(
-            title: String,
-            initial: Int,
-            maxValue: Int,
-            changed: (Int) -> Unit
-        ) {
-            val titleView = label("$title: $initial", 15f)
-            root.addView(titleView)
-
-            val bar = SeekBar(this).apply {
-                max = maxValue
-                progress = initial
-            }
-
-            root.addView(bar)
-
-            bar.setOnSeekBarChangeListener(
-                object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar?,
-                        value: Int,
-                        fromUser: Boolean
-                    ) {
-                        titleView.text = "$title: $value"
-                        if (fromUser) changed(value)
-                    }
-
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-                }
-            )
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brand.addView(text("FIRELIGHT", 25f, Color.WHITE, true))
+        addGap(brand, 4)
+        brand.addView(text("SMART LIGHT CONTROL", 10f, muted, true))
+        header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        val live = text("●  BLE", 11f, Color.rgb(117, 224, 173), true).apply {
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = rounded(Color.rgb(25, 55, 48), 30)
         }
+        header.addView(live)
+        root.addView(header)
+        addGap(root, 22)
 
-        root.addView(label("FIRELIGHT", 28f))
-        root.addView(label("LED Bluetooth Controller", 14f))
+        val connectionCard = card()
+        connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
+        addGap(connectionCard, 9)
+        status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
+        connectionCard.addView(status)
+        addGap(connectionCard, 14)
+        val connectionActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val connectButton = actionButton("Підключити", true) { startScan() }
+        val disconnectButton = actionButton("Від'єднати") { disconnect() }
+        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+            marginEnd = dp(8)
+        })
+        connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+            marginStart = dp(8)
+        })
+        connectionCard.addView(connectionActions)
+        root.addView(connectionCard)
+        addGap(root, 18)
 
-        status = label("Статус: не підключено", 14f)
-        root.addView(status)
+        val colorCard = card()
+        colorCard.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true))
+        addGap(colorCard, 6)
+        colorCard.addView(text("Обери свій відтінок", 21f, Color.WHITE, true))
+        addGap(colorCard, 16)
 
-        root.addView(
-            button("Підключити ELK-BLEDOB") {
-                startScan()
-            }
-        )
-
-        root.addView(
-            button("Від'єднати") {
-                disconnect()
-            }
-        )
-
-        root.addView(label("КЕРУВАННЯ КОЛЬОРОМ", 20f))
-
-        preview = label("RGB: $red, $green, $blue", 16f)
-        root.addView(preview)
-
+        val wheelFrame = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, dp(300))
+        }
         val colorWheel = ColorWheelView(this) { selectedColor ->
             red = Color.red(selectedColor)
             green = Color.green(selectedColor)
@@ -203,36 +227,69 @@ class MainActivity : Activity() {
             updatePreview()
             if (connected) sendCurrentColor()
         }
-        val wheelSize = (280 * resources.displayMetrics.density).toInt()
-        root.addView(colorWheel, LinearLayout.LayoutParams(wheelSize, wheelSize))
+        val wheelSize = dp(280)
+        wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
+        colorCard.addView(wheelFrame)
 
-        addSlider("Яскравість", brightness, 100) {
+        preview = text("●  RGB  $red  /  $green  /  $blue", 13f, Color.rgb(red, green, blue), true).apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(2))
+        }
+        colorCard.addView(preview)
+        root.addView(colorCard)
+        addGap(root, 18)
+
+        val tuningCard = card()
+        tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
+        addGap(tuningCard, 12)
+
+        fun addModernSlider(title: String, initial: Int, maxValue: Int, suffix: String, changed: (Int) -> Unit) {
+            val line = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            val titleView = text(title, 15f, Color.rgb(225, 230, 240), true)
+            val valueView = text("$initial$suffix", 14f, Color.WHITE, true)
+            line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
+            line.addView(valueView)
+            tuningCard.addView(line)
+            addGap(tuningCard, 7)
+            val slider = ModernSliderView(this, initial, maxValue) { value ->
+                valueView.text = "$value$suffix"
+                changed(value)
+            }
+            tuningCard.addView(slider, LinearLayout.LayoutParams(-1, dp(34)))
+            addGap(tuningCard, 14)
+        }
+
+        addModernSlider("Яскравість", brightness, 100, "%") {
             brightness = it
             if (!fireEnabled) sendCurrentColor()
         }
-
-        addSlider("Швидкість вогню", speed - 10, 10) {
+        addModernSlider("Швидкість вогню", speed - 10, 10, "/10") {
             speed = (it + 10).coerceIn(11, 20)
         }
+        root.addView(tuningCard)
+        addGap(root, 18)
 
-        fireButton = button("Увімкнути ефект вогню") {
-            toggleFire()
+        val effectsCard = card()
+        effectsCard.addView(text("ЕФЕКТИ ТА ЖИВЛЕННЯ", 11f, muted, true))
+        addGap(effectsCard, 12)
+        fireButton = actionButton("Увімкнути ефект вогню", true) { toggleFire() }
+        effectsCard.addView(fireButton, LinearLayout.LayoutParams(-1, dp(54)))
+        addGap(effectsCard, 10)
+        stripButton = actionButton("Вимкнути гірлянду") { toggleStrip() }
+        effectsCard.addView(stripButton, LinearLayout.LayoutParams(-1, dp(54)))
+        addGap(effectsCard, 12)
+        effectsCard.addView(text("Вогонь працює у фоні, навіть коли ти перемикаєшся на інші застосунки.", 12f, muted))
+        root.addView(effectsCard)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setBackgroundColor(background)
+            addView(root)
         }
-
-        root.addView(fireButton)
-
-        stripButton = button("Вимкнути гірлянду") { toggleStrip() }
-        root.addView(stripButton)
-
-        root.addView(
-            label(
-                "Ефект продовжує працювати у фоні. Для зупинки вимкни ефект або гірлянду.",
-                13f
-            )
-        )
-
-        val scroll = ScrollView(this)
-        scroll.addView(root)
         setContentView(scroll)
     }
 
@@ -715,6 +772,68 @@ private class ColorWheelView(
         val color = Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f))
         onColorSelected(color)
         invalidate()
+        return true
+    }
+}
+
+
+/** Compact custom slider matching the dark Firelight interface. */
+private class ModernSliderView(
+    context: Context,
+    initial: Int,
+    private val maximum: Int,
+    private val onChanged: (Int) -> Unit
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val track = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var value = initial.coerceIn(0, maximum)
+    private val thumbRadius = 8f * density
+
+    init {
+        isClickable = true
+        contentDescription = "Slider"
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val left = thumbRadius
+        val right = width - thumbRadius
+        val cy = height / 2f
+        val fraction = if (maximum == 0) 0f else value.toFloat() / maximum
+        val x = left + (right - left) * fraction
+        track.color = Color.rgb(54, 62, 79)
+        track.strokeWidth = 5f * density
+        track.strokeCap = Paint.Cap.ROUND
+        canvas.drawLine(left, cy, right, cy, track)
+        track.color = Color.rgb(255, 111, 66)
+        canvas.drawLine(left, cy, x, cy, track)
+        track.style = Paint.Style.FILL
+        track.setShadowLayer(5f * density, 0f, 2f * density, 0x55300000)
+        canvas.drawCircle(x, cy, thumbRadius, track)
+        track.clearShadowLayer()
+        track.color = Color.WHITE
+        canvas.drawCircle(x, cy, 3f * density, track)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action != MotionEvent.ACTION_DOWN &&
+            event.action != MotionEvent.ACTION_MOVE &&
+            event.action != MotionEvent.ACTION_UP) return true
+        val left = thumbRadius
+        val right = width - thumbRadius
+        val fraction = ((event.x - left) / (right - left)).coerceIn(0f, 1f)
+        val next = (fraction * maximum).toInt()
+        if (next != value) {
+            value = next
+            onChanged(value)
+            invalidate()
+        }
+        if (event.action == MotionEvent.ACTION_UP) performClick()
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
         return true
     }
 }
