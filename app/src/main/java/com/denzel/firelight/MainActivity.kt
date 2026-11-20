@@ -339,7 +339,7 @@ class MainActivity : Activity() {
         root.addView(pageHost)
 
         val colorCard = card().apply {
-            setPadding(dp(12), dp(4), dp(12), dp(12))
+            setPadding(dp(12), dp(4), dp(12), dp(6))
         }
         val colorHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -350,7 +350,9 @@ class MainActivity : Activity() {
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(30), dp(30)))
+        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+            topMargin = dp(8)
+        })
         colorCard.addView(colorHeader)
         addGap(colorCard, 4)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
@@ -379,11 +381,13 @@ class MainActivity : Activity() {
         firePage.addView(colorCard)
         addGap(firePage, 12)
 
-        val tuningCard = card()
+        val tuningCard = card().apply {
+            setPadding(dp(12), dp(12), dp(12), dp(6))
+        }
         tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
         addGap(tuningCard, 3)
 
-        fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, changed: (Int) -> Unit) {
+        fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -399,17 +403,17 @@ class MainActivity : Activity() {
                 changed(value)
             }
             parent.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
-            addGap(parent, 8)
+            addGap(parent, bottomGap)
         }
 
-        addModernSlider(colorCard, "Яскравість", brightness, 100, "%") {
+        addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
             brightness = it
             if (!fireEnabled) sendCurrentColor()
         }
         addModernSlider(tuningCard, "Швидкість вогню", speed - 10, 10, "/10") {
             speed = (it + 10).coerceIn(11, 20)
         }
-        addModernSlider(tuningCard, "Розкид кольорів вогню", fireColorSpread, 100, "%") {
+        addModernSlider(tuningCard, "Розкид кольорів вогню", fireColorSpread, 100, "%", 2) {
             fireColorSpread = it.coerceIn(0, 100)
             if (fireEnabled) {
                 fireHueTarget = 0f
