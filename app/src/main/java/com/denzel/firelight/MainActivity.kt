@@ -7,6 +7,8 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.provider.Settings
 import android.graphics.Color
 import android.os.*
 import android.view.ViewGroup
@@ -212,7 +214,8 @@ class MainActivity : Activity() {
         val permissions = if (Build.VERSION.SDK_INT >= 31) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION
             )
         } else {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -234,6 +237,9 @@ class MainActivity : Activity() {
             ) == PackageManager.PERMISSION_GRANTED &&
                 checkSelfPermission(
                     Manifest.permission.BLUETOOTH_CONNECT
+                ) == PackageManager.PERMISSION_GRANTED &&
+                checkSelfPermission(
+                    Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
         }
 
@@ -263,6 +269,26 @@ class MainActivity : Activity() {
                 "Увімкни Bluetooth",
                 Toast.LENGTH_SHORT
             ).show()
+            return
+        }
+
+        val locationEnabled = try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                (getSystemService(Context.LOCATION_SERVICE) as LocationManager).isLocationEnabled
+            } else {
+                Settings.Secure.getInt(
+                    contentResolver,
+                    Settings.Secure.LOCATION_MODE,
+                    Settings.Secure.LOCATION_MODE_OFF
+                ) != Settings.Secure.LOCATION_MODE_OFF
+            }
+        } catch (_: Exception) {
+            true
+        }
+
+        if (!locationEnabled) {
+            status.text = "Увімкни геолокацію в швидких налаштуваннях Android і повтори пошук."
+            Toast.makeText(this, "Для BLE-пошуку на цьому Android потрібна увімкнена геолокація", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -324,7 +350,15 @@ class MainActivity : Activity() {
         override fun onScanFailed(errorCode: Int) {
             scanning = false
             runOnUiThread {
-                status.text = "Помилка пошуку BLE: $errorCode"
+                val reason = when (errorCode) {
+                    SCAN_FAILED_ALREADY_STARTED -> "сканування вже запущене"
+                    SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "Android не зареєстрував BLE-сканер"
+                    SCAN_FAILED_INTERNAL_ERROR -> "внутрішня помилка Bluetooth"
+                    SCAN_FAILED_FEATURE_UNSUPPORTED -> "BLE-сканування не підтримується"
+                    SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "немає ресурсів BLE"
+                    else -> "код $errorCode"
+                }
+                status.text = "Помилка BLE: $reason"
             }
         }
     }
@@ -367,7 +401,11 @@ class MainActivity : Activity() {
             val device = data.first
             val rssi = data.second
             val name = try {
-                device.name ?: "Без назви"
+                device.name
+                    ?: discoveredDevices[address]?.first?.let { resultName ->
+                        resultName.name
+                    }
+                    ?: "Без назви"
             } catch (_: SecurityException) {
                 "Без назви"
             }
