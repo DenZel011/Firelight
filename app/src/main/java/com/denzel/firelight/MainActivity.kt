@@ -290,7 +290,7 @@ class MainActivity : Activity() {
         }
         val deviceField = FrameLayout(this).apply {
             addView(deviceSpinner, FrameLayout.LayoutParams(-1, dp(38)))
-            addView(object : View(this) {
+            addView(object : View(this@MainActivity) {
                 private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.rgb(190, 199, 215)
                     style = Paint.Style.STROKE
