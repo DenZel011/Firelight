@@ -39,7 +39,9 @@ class MainActivity : Activity() {
     private var green = 92
     private var blue = 12
     private var brightness = 100
-    private var speed = 8
+    private var speed = 15
+    private var stripOn = true
+    private lateinit var stripButton: Button
 
     private var fireFrom = intArrayOf(255, 95, 8)
     private var fireTo = intArrayOf(235, 55, 3)
@@ -56,7 +58,7 @@ class MainActivity : Activity() {
 
     private val fireTask = object : Runnable {
         override fun run() {
-            if (!fireEnabled || !connected) return
+            if (!fireEnabled || !connected || !stripOn) return
 
             val now = SystemClock.uptimeMillis()
             var progress = ((now - fireTransitionStart).toFloat() /
@@ -108,6 +110,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         createInterface()
         requestBluetoothPermissions()
+        if (hasBluetoothPermissions()) {
+            startKeepAliveService()
+            startScan()
+        }
     }
 
     private fun createInterface() {
@@ -205,8 +211,8 @@ class MainActivity : Activity() {
             if (!fireEnabled) sendCurrentColor()
         }
 
-        addSlider("Швидкість вогню", speed, 20) {
-            speed = it.coerceAtLeast(1)
+        addSlider("Швидкість вогню", speed - 10, 10) {
+            speed = (it + 10).coerceIn(11, 20)
         }
 
         fireButton = button("Увімкнути ефект вогню") {
@@ -215,9 +221,12 @@ class MainActivity : Activity() {
 
         root.addView(fireButton)
 
+        stripButton = button("Вимкнути гірлянду") { toggleStrip() }
+        root.addView(stripButton)
+
         root.addView(
             label(
-                "Ефект вогню працює, поки застосунок відкритий.",
+                "Ефект продовжує працювати у фоні. Для зупинки вимкни ефект або гірлянду.",
                 13f
             )
         )
@@ -225,6 +234,30 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
+    }
+
+    private fun startKeepAliveService() {
+        try {
+            val intent = android.content.Intent(this, KeepAliveService::class.java)
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent)
+            else startService(intent)
+        } catch (e: Exception) {
+            status.text = "Не вдалося запустити фоновий режим: ${e.message}"
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100 && hasBluetoothPermissions()) {
+            startKeepAliveService()
+            startScan()
+        } else if (requestCode == 100) {
+            status.text = "Потрібні дозволи Bluetooth для підключення"
+        }
     }
 
     private fun requestBluetoothPermissions() {
@@ -266,6 +299,10 @@ class MainActivity : Activity() {
     }
 
     private fun startScan() {
+        if (connected) {
+            status.text = "Вже підключено до ELK-BLEDOB"
+            return
+        }
         if (!hasBluetoothPermissions()) {
             requestBluetoothPermissions()
             Toast.makeText(
@@ -499,6 +536,29 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun toggleStrip() {
+        if (!connected) {
+            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
+            return
+        }
+        stripOn = !stripOn
+        if (!stripOn) {
+            sendRGB(0, 0, 0)
+            stripButton.text = "Увімкнути гірлянду"
+        } else {
+            stripButton.text = "Вимкнути гірлянду"
+            if (fireEnabled) {
+                fireFrom = intArrayOf(red, green, blue)
+                fireTo = nextFireColor()
+                fireTransitionStart = SystemClock.uptimeMillis()
+                fireTransitionDuration = nextTransitionDuration()
+                if (!handler.hasCallbacks(fireTask)) fireTask.run()
+            } else {
+                sendCurrentColor()
+            }
+        }
+    }
+
     private fun toggleFire() {
         if (!connected) {
             Toast.makeText(
@@ -509,6 +569,10 @@ class MainActivity : Activity() {
             return
         }
 
+        if (!stripOn) {
+            stripOn = true
+            stripButton.text = "Вимкнути гірлянду"
+        }
         fireEnabled = !fireEnabled
 
         if (fireEnabled) {
@@ -557,17 +621,14 @@ class MainActivity : Activity() {
 
         status.text = "Статус: не підключено"
         fireButton.text = "Увімкнути ефект вогню"
+        stripOn = true
+        stripButton.text = "Вимкнути гірлянду"
     }
 
     override fun onDestroy() {
+        // Foreground service keeps the process alive while the activity is hidden.
+        // Keep the BLE connection and fire loop running when the activity is destroyed.
         stopScan()
-        handler.removeCallbacks(fireTask)
-
-        try {
-            gatt?.close()
-        } catch (_: Exception) {
-        }
-
         super.onDestroy()
     }
 }
