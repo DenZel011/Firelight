@@ -518,6 +518,11 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (characteristic != null) {
                     status.text = "Підключено до ELK-BLEDOB"
+                    // The controller does not report its physical power state.
+                    // Treat it as unknown/off after connecting so the first tap
+                    // always sends a real POWER ON command (not another OFF).
+                    stripOn = false
+                    stripButton.text = "Увімкнути гірлянду"
                     sendCurrentColor()
                 } else {
                     status.text = "Не знайдено FFF0 / FFF3"
