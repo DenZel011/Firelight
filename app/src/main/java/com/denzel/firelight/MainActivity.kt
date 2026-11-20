@@ -43,7 +43,9 @@ class MainActivity : Activity() {
     private var brightness = 100
     private var speed = 15
     private var fireColorSpread = 0
-    private var stripOn = true
+    private var stripOn = false
+    private var stripStateKnown = false
+    private var notifyCharacteristic: BluetoothGattCharacteristic? = null
     private lateinit var bulbButton: BulbToggleView
 
     private var fireFrom = intArrayOf(255, 95, 8)
@@ -68,6 +70,15 @@ class MainActivity : Activity() {
     private var writeScheduled = false
     private var lastWriteAt = 0L
     private val targetAddress = "BE:27:8A:00:73:DE"
+    private val powerNotifyUUID = UUID.fromString("0000FFF4-0000-1000-8000-00805F9B34FB")
+    private val cccdUUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
+    private val scanTimeout = Runnable {
+        if (scanning) {
+            stopScan()
+            status.text = "ELK-BLEDOB не знайдено. Перевір, що контролер увімкнений."
+            deviceAdapter?.notifyDataSetChanged()
+        }
+    }
 
     private val fireTask = object : Runnable {
         override fun run() {
@@ -165,6 +176,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         createInterface()
         requestBluetoothPermissions()
+        stripStateKnown = false
+        stripOn = false
         if (hasBluetoothPermissions()) {
             startKeepAliveService()
             startScan()
@@ -595,6 +608,7 @@ class MainActivity : Activity() {
             return
         }
 
+        closeGattConnection()
         status.text = "Шукаю тільки ELK-BLEDOB ($targetAddress)..."
         scanning = true
         try {
@@ -604,13 +618,8 @@ class MainActivity : Activity() {
                 .setReportDelay(0)
                 .build()
             activeScanner.startScan(listOf(filter), settings, scanCallback)
-            handler.postDelayed({
-                if (scanning) {
-                    stopScan()
-                    status.text = "ELK-BLEDOB не знайдено. Перевір, що контролер увімкнений."
-                    deviceAdapter?.notifyDataSetChanged()
-                }
-            }, 10000)
+            handler.removeCallbacks(scanTimeout)
+            handler.postDelayed(scanTimeout, 10000)
         } catch (e: SecurityException) {
             scanning = false
             status.text = "Немає дозволу Bluetooth"
@@ -646,6 +655,7 @@ class MainActivity : Activity() {
     }
 
     private fun stopScan() {
+        handler.removeCallbacks(scanTimeout)
         if (!scanning) return
 
         scanning = false
@@ -661,7 +671,10 @@ class MainActivity : Activity() {
         status.text = "Підключення..."
 
         try {
-            gatt?.close()
+            closeGattConnection()
+            stripStateKnown = false
+            stripOn = false
+            bulbButton.setLit(null)
 
             gatt = device.connectGatt(
                 this,
@@ -682,8 +695,13 @@ class MainActivity : Activity() {
             statusCode: Int,
             newState: Int
         ) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
+            if (g !== gatt) return
+            if (newState == BluetoothProfile.STATE_CONNECTED && statusCode == BluetoothGatt.GATT_SUCCESS) {
                 connected = true
+                stripStateKnown = false
+                stripOn = false
+                notifyCharacteristic = null
+                characteristic = null
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
 
                 runOnUiThread {
@@ -696,20 +714,24 @@ class MainActivity : Activity() {
                 }
 
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (g !== gatt) return
                 connected = false
                 characteristic = null
+                notifyCharacteristic = null
+                stripStateKnown = false
                 fireEnabled = false
-                stripOn = true
+                stripOn = false
                 handler.removeCallbacks(fireTask)
 
                 runOnUiThread {
                     status.text = "Від'єднано"
                     deviceAdapter?.notifyDataSetChanged()
                     fireButton.text = "Увімкнути ефект вогню"
-                    bulbButton.setLit(stripOn)
+                    bulbButton.setLit(null)
                 }
 
-                g.close()
+                try { g.close() } catch (_: Exception) {}
+                if (g === gatt) gatt = null
             }
         }
 
@@ -717,23 +739,123 @@ class MainActivity : Activity() {
             g: BluetoothGatt,
             statusCode: Int
         ) {
+            if (g !== gatt) return
             val service = g.getService(serviceUUID)
             characteristic = service?.getCharacteristic(writeUUID)
+            val powerState = service?.getCharacteristic(powerNotifyUUID)
+            notifyCharacteristic = powerState
 
             runOnUiThread {
-                if (characteristic != null) {
-                    status.text = "Підключено до ELK-BLEDOB"
-                    deviceAdapter?.notifyDataSetChanged()
-                    // The controller does not report its physical power state.
-                    // Treat it as unknown/off after connecting so the first tap
-                    // always sends a real POWER ON command (not another OFF).
+                if (statusCode == BluetoothGatt.GATT_SUCCESS && characteristic != null) {
+                    stripStateKnown = false
                     stripOn = false
-                    bulbButton.setLit(stripOn)
-                    sendCurrentColor()
+                    bulbButton.setLit(null)
+                    deviceAdapter?.notifyDataSetChanged()
+
+                    val canNotify = powerState != null &&
+                        (powerState.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
+                            BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
+                    val canRead = powerState != null &&
+                        (powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0
+
+                    if (canNotify) {
+                        try {
+                            g.setCharacteristicNotification(powerState, true)
+                            val descriptor = powerState.getDescriptor(cccdUUID)
+                            if (descriptor != null) {
+                                if (Build.VERSION.SDK_INT >= 33) {
+                                    val value = if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
+                                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                    else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                                    g.writeDescriptor(descriptor, value)
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    descriptor.value = if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
+                                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                    else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                                    @Suppress("DEPRECATION")
+                                    g.writeDescriptor(descriptor)
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    if (canRead) {
+                        try { g.readCharacteristic(powerState) } catch (_: Exception) {}
+                    }
+                    status.text = if (canNotify || canRead) {
+                        "Підключено · перевіряю стан стрічки…"
+                    } else {
+                        "Підключено · контролер не повідомляє стан"
+                    }
                 } else {
                     status.text = "Не знайдено FFF0 / FFF3"
                 }
             }
+        }
+
+        @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
+        override fun onCharacteristicChanged(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            if (characteristic.uuid == powerNotifyUUID) {
+                updatePowerStateFromPacket(characteristic.value)
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            if (characteristic.uuid == powerNotifyUUID) {
+                updatePowerStateFromPacket(value)
+            }
+        }
+
+        @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
+        override fun onCharacteristicRead(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
+                updatePowerStateFromPacket(characteristic.value)
+            }
+        }
+
+        override fun onCharacteristicRead(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
+                updatePowerStateFromPacket(value)
+            }
+        }
+    }
+
+    private fun updatePowerStateFromPacket(packet: ByteArray?) {
+        if (packet == null || packet.size < 4 || packet[0] != 0x7E.toByte()) return
+        if (packet[2] != 0x04.toByte()) return
+        val isOn = when (packet[3].toInt() and 0xFF) {
+            0xF0, 0xFF -> true
+            0x00 -> false
+            else -> return
+        }
+        runOnUiThread {
+            if (!connected) return@runOnUiThread
+            stripOn = isOn
+            stripStateKnown = true
+            bulbButton.setLit(isOn)
+            if (!isOn) {
+                fireEnabled = false
+                handler.removeCallbacks(fireTask)
+                fireButton.text = "Увімкнути ефект вогню"
+            }
+            status.text = if (isOn) "Підключено · стрічка увімкнена"
+                else "Підключено · стрічка вимкнена"
         }
     }
 
@@ -822,6 +944,24 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
             return
         }
+        if (!stripStateKnown) {
+            stripOn = true
+            stripStateKnown = true
+            sendPowerCommand(true)
+            bulbButton.setLit(true)
+            handler.postDelayed({
+                if (!connected || !stripOn) return@postDelayed
+                if (fireEnabled) {
+                    resetFireMotion()
+                    handler.removeCallbacks(fireTask)
+                    fireTask.run()
+                } else {
+                    sendCurrentColor()
+                }
+            }, 180L)
+            status.text = "Команда увімкнення надіслана"
+            return
+        }
         stripOn = !stripOn
         if (!stripOn) {
             sendPowerCommand(false)
@@ -856,9 +996,10 @@ class MainActivity : Activity() {
             return
         }
 
-        val wasStripOff = !stripOn
+        val wasStripOff = !stripStateKnown || !stripOn
         if (wasStripOff) {
             stripOn = true
+            stripStateKnown = true
             bulbButton.setLit(stripOn)
             sendPowerCommand(true)
         }
@@ -894,39 +1035,46 @@ class MainActivity : Activity() {
         preview.text = "● RGB: $red, $green, $blue"
     }
 
+    private fun closeGattConnection() {
+        val oldGatt = gatt
+        gatt = null
+        connected = false
+        characteristic = null
+        notifyCharacteristic = null
+        try {
+            oldGatt?.disconnect()
+            oldGatt?.close()
+        } catch (_: Exception) {
+        }
+    }
+
     private fun disconnect() {
         stopScan()
         fireEnabled = false
         handler.removeCallbacks(fireTask)
-
-        try {
-            gatt?.disconnect()
-            gatt?.close()
-        } catch (_: SecurityException) {
-        }
-
-        gatt = null
-        characteristic = null
+        closeGattConnection()
         pendingPacket = null
         writeScheduled = false
-        connected = false
+        stripStateKnown = false
+        stripOn = false
 
         status.text = "Статус: не підключено"
         deviceAdapter?.notifyDataSetChanged()
         fireButton.text = "Увімкнути ефект вогню"
-        stripOn = true
-        bulbButton.setLit(stripOn)
+        bulbButton.setLit(null)
     }
 
     override fun onDestroy() {
-        // Foreground service keeps the process alive while the activity is hidden.
-        // Keep the BLE connection and fire loop running when the activity is destroyed.
+        // Release the BLE peripheral when the Activity is closed. Leaving a GATT
+        // client open can keep the strip connected and invisible to other scanners.
         stopScan()
+        fireEnabled = false
+        handler.removeCallbacks(fireTask)
+        closeGattConnection()
+        try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
         super.onDestroy()
     }
-}
-
-
+    
 /** Square power toggle with a filled/outline bulb state. */
 private class BulbToggleView(
     context: Context,
@@ -934,7 +1082,7 @@ private class BulbToggleView(
 ) : View(context) {
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var lit = true
+    private var lit: Boolean? = null
     private val accent = Color.rgb(255, 142, 105)
     private val dim = Color.rgb(151, 160, 178)
 
@@ -945,8 +1093,13 @@ private class BulbToggleView(
         setOnClickListener { onToggle() }
     }
 
-    fun setLit(value: Boolean) {
+    fun setLit(value: Boolean?) {
         lit = value
+        contentDescription = when (value) {
+            true -> "Гірлянда увімкнена"
+            false -> "Гірлянда вимкнена"
+            null -> "Стан гірлянди невідомий"
+        }
         invalidate()
     }
 
@@ -961,11 +1114,19 @@ private class BulbToggleView(
         val top = (h - side) / 2f
         val radius = 12f * density
         paint.style = Paint.Style.FILL
-        paint.color = if (lit) Color.rgb(55, 39, 39) else Color.rgb(29, 34, 46)
+        paint.color = when (lit) {
+            true -> Color.rgb(55, 39, 39)
+            false -> Color.rgb(29, 34, 46)
+            null -> Color.rgb(34, 35, 43)
+        }
         canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1f * density
-        paint.color = if (lit) Color.rgb(111, 68, 60) else Color.rgb(61, 70, 88)
+        paint.color = when (lit) {
+            true -> Color.rgb(111, 68, 60)
+            false -> Color.rgb(61, 70, 88)
+            null -> Color.rgb(91, 83, 70)
+        }
         canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
 
         // Compact, symmetrical lamp glyph. All strokes stay inside a 24dp
@@ -973,7 +1134,11 @@ private class BulbToggleView(
         val cx = w / 2f
         val cy = h / 2f
         val d = density
-        val iconColor = if (lit) accent else dim
+        val iconColor = when (lit) {
+            true -> accent
+            false -> dim
+            null -> Color.rgb(177, 157, 126)
+        }
         paint.color = iconColor
         paint.strokeWidth = 1.8f * d
         paint.strokeCap = Paint.Cap.ROUND
