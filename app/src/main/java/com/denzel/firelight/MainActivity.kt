@@ -295,10 +295,18 @@ class MainActivity : Activity() {
                 null
             }
 
-            if (name == "ELK-BLEDOB") {
-                stopScan()
-                connect(device)
-            }
+            val address = try {
+    device.address
+} catch (e: SecurityException) {
+    null
+}
+
+if (name?.trim()?.equals("ELK-BLEDOB", ignoreCase = true) == true ||
+    address?.equals("BE:27:8A:00:73:DE", ignoreCase = true) == true
+) {
+    stopScan()
+    connect(device)
+}
         }
 
         override fun onScanFailed(errorCode: Int) {
