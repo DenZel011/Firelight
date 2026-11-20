@@ -10,8 +10,12 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.provider.Settings
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.os.*
-import android.view.ViewGroup
+import android.view.MotionEvent
+import android.view.View
 import android.widget.*
 import kotlin.random.Random
 import java.util.UUID
@@ -39,6 +43,11 @@ class MainActivity : Activity() {
     private var brightness = 75
     private var speed = 8
 
+    private var fireFrom = intArrayOf(255, 95, 8)
+    private var fireTo = intArrayOf(235, 55, 3)
+    private var fireTransitionStart = 0L
+    private var fireTransitionDuration = 600L
+
     private lateinit var status: TextView
     private lateinit var fireButton: Button
     private lateinit var preview: TextView
@@ -49,19 +58,42 @@ class MainActivity : Activity() {
         override fun run() {
             if (!fireEnabled || !connected) return
 
-            val pulse = Random.nextInt(-35, 26)
-            val r = (225 + pulse).coerceIn(150, 255)
-            val g = (Random.nextInt(48, 112) + pulse / 3)
-                .coerceIn(25, 135)
-            val b = Random.nextInt(0, 13)
+            val now = SystemClock.uptimeMillis()
+            var progress = ((now - fireTransitionStart).toFloat() /
+                fireTransitionDuration.toFloat()).coerceIn(0f, 1f)
 
-            sendRGB(r, g, b)
+            if (progress >= 1f) {
+                fireFrom = fireTo.copyOf()
+                fireTo = nextFireColor()
+                fireTransitionStart = now
+                fireTransitionDuration = Random.nextLong(
+                    (850L - speed * 25L).coerceAtLeast(250L),
+                    (1900L - speed * 20L).coerceAtLeast(700L)
+                )
+                progress = 0f
+            }
 
-            handler.postDelayed(
-                this,
-                (260L - speed * 10L).coerceIn(60L, 250L)
-            )
+            // Smoothstep easing: no abrupt jumps between fire shades.
+            val eased = progress * progress * (3f - 2f * progress)
+            fun blend(index: Int): Int =
+                (fireFrom[index] + (fireTo[index] - fireFrom[index]) * eased)
+                    .toInt().coerceIn(0, 255)
+
+            sendRGB(blend(0), blend(1), blend(2))
+            handler.postDelayed(this, 25L)
         }
+    }
+
+    private fun nextFireColor(): IntArray {
+        // Natural warm-fire palette: occasional deep ember, orange and bright flame.
+        val red = Random.nextInt(205, 256)
+        val green = when (Random.nextInt(100)) {
+            in 0..18 -> Random.nextInt(24, 52)
+            in 19..68 -> Random.nextInt(52, 105)
+            else -> Random.nextInt(105, 151)
+        }
+        val blue = Random.nextInt(0, 17)
+        return intArrayOf(red, green, blue)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -155,26 +187,16 @@ class MainActivity : Activity() {
         preview = label("● Поточний колір", 20f)
         root.addView(preview)
 
-        addSlider("Червоний", red, 255) {
-            red = it
+        val colorWheel = ColorWheelView(this) { selectedColor ->
+            red = Color.red(selectedColor)
+            green = Color.green(selectedColor)
+            blue = Color.blue(selectedColor)
             stopFireForManual()
-            sendCurrentColor()
             updatePreview()
-        }
-
-        addSlider("Зелений", green, 255) {
-            green = it
-            stopFireForManual()
             sendCurrentColor()
-            updatePreview()
         }
-
-        addSlider("Синій", blue, 255) {
-            blue = it
-            stopFireForManual()
-            sendCurrentColor()
-            updatePreview()
-        }
+        val wheelSize = (280 * resources.displayMetrics.density).toInt()
+        root.addView(colorWheel, LinearLayout.LayoutParams(wheelSize, wheelSize))
 
         addSlider("Яскравість", brightness, 100) {
             brightness = it
@@ -577,6 +599,10 @@ class MainActivity : Activity() {
 
         if (fireEnabled) {
             fireButton.text = "Вимкнути ефект вогню"
+            fireFrom = intArrayOf(red, green, blue)
+            fireTo = nextFireColor()
+            fireTransitionStart = SystemClock.uptimeMillis()
+            fireTransitionDuration = Random.nextLong(500L, 1500L)
             fireTask.run()
         } else {
             handler.removeCallbacks(fireTask)
@@ -595,6 +621,7 @@ class MainActivity : Activity() {
 
     private fun updatePreview() {
         preview.setTextColor(Color.rgb(red, green, blue))
+        preview.text = "● Поточний колір"
     }
 
     private fun disconnect() {
@@ -626,5 +653,88 @@ class MainActivity : Activity() {
         }
 
         super.onDestroy()
+    }
+}
+
+
+/** Circular hue/saturation picker. Touch position directly determines the RGB value. */
+private class ColorWheelView(
+    context: Context,
+    private val onColorSelected: (Int) -> Unit
+) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var wheelBitmap: Bitmap? = null
+    private var selectedHue = 24f
+    private var selectedSaturation = 0.95f
+    private val density = resources.displayMetrics.density
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val desired = (280 * density).toInt()
+        val width = resolveSize(desired, widthMeasureSpec)
+        val height = resolveSize(desired, heightMeasureSpec)
+        val side = minOf(width, height)
+        setMeasuredDimension(side, side)
+    }
+
+    private fun makeWheel(side: Int) {
+        if (side <= 0) return
+        val pixels = IntArray(side * side)
+        val center = (side - 1) / 2f
+        val radius = center
+        val hsv = floatArrayOf(0f, 0f, 1f)
+        for (y in 0 until side) {
+            for (x in 0 until side) {
+                val dx = x - center
+                val dy = center - y
+                val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                val index = y * side + x
+                if (distance <= radius) {
+                    hsv[0] = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+                    hsv[1] = (distance / radius).coerceIn(0f, 1f)
+                    pixels[index] = Color.HSVToColor(hsv)
+                } else {
+                    pixels[index] = Color.TRANSPARENT
+                }
+            }
+        }
+        wheelBitmap = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val side = minOf(width, height).toFloat()
+        if (side <= 0f) return
+        if (wheelBitmap?.width != side.toInt()) makeWheel(side.toInt())
+        wheelBitmap?.let {
+            canvas.drawBitmap(it, null, android.graphics.RectF(0f, 0f, side, side), paint)
+        }
+        val radius = side / 2f
+        val markerRadius = selectedSaturation * radius
+        val markerAngle = Math.toRadians(selectedHue.toDouble())
+        val cx = radius + kotlin.math.cos(markerAngle).toFloat() * markerRadius
+        val cy = radius - kotlin.math.sin(markerAngle).toFloat() * markerRadius
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f * density
+        paint.color = Color.BLACK
+        canvas.drawCircle(cx, cy, 10f * density, paint)
+        paint.color = Color.WHITE
+        paint.strokeWidth = 2f * density
+        canvas.drawCircle(cx, cy, 7f * density, paint)
+        paint.style = Paint.Style.FILL
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action != MotionEvent.ACTION_DOWN &&
+            event.action != MotionEvent.ACTION_MOVE) return true
+        val radius = minOf(width, height) / 2f
+        val dx = event.x - radius
+        val dy = radius - event.y
+        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+        selectedSaturation = (distance / radius).coerceIn(0f, 1f)
+        selectedHue = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
+        val color = Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f))
+        onColorSelected(color)
+        invalidate()
+        return true
     }
 }
