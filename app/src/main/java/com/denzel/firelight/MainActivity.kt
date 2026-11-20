@@ -354,9 +354,12 @@ class MainActivity : Activity() {
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        // Keep the toggle at its natural 40dp size; the header itself
-        // provides the alignment so no extra margin can push it against an edge.
-        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        // Preserve the 40dp button and the header's total height while
+        // restoring visual space above the bulb inside the existing layout.
+        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(-8)
+        })
         colorCard.addView(colorHeader)
         addGap(colorCard, 2)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
@@ -388,7 +391,7 @@ class MainActivity : Activity() {
         val tuningCard = card().apply {
             setPadding(dp(12), dp(12), dp(12), dp(6))
         }
-        tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
+        tuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
         addGap(tuningCard, 3)
 
         fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, changed: (Int) -> Unit) {
@@ -426,20 +429,10 @@ class MainActivity : Activity() {
                 fireSaturation = 1f - (1f - fireSaturation) * fireColorSpread / 100f
             }
         }
-        firePage.addView(tuningCard)
-        addGap(firePage, 12)
-
-        val effectsCard = card()
-        effectsCard.addView(text("ЕФЕКТИ ТА ЖИВЛЕННЯ", 11f, muted, true))
-        addGap(effectsCard, 12)
-        val effectActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-        }
+        addGap(tuningCard, 8)
         fireButton = actionButton("Увімкнути вогонь", true) { toggleFire() }
-        effectActions.addView(fireButton, LinearLayout.LayoutParams(-1, dp(40)))
-        effectsCard.addView(effectActions)
-        firePage.addView(effectsCard)
+        tuningCard.addView(fireButton, LinearLayout.LayoutParams(-1, dp(40)))
+        firePage.addView(tuningCard)
 
         // Bottom navigation stays visible on every page. Only the first page
         // is implemented for now; the remaining tabs are intentionally blank.
