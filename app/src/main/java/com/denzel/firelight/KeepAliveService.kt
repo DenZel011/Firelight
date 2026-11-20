@@ -50,7 +50,15 @@ class KeepAliveService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        START_STICKY
+        START_NOT_STICKY
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // A swipe-away from Recents is an explicit app close: do not leave the
+        // foreground process running and holding resources after its task is gone.
+        stopForeground(true)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
