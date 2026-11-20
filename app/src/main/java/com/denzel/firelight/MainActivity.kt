@@ -66,10 +66,7 @@ class MainActivity : Activity() {
                 fireFrom = fireTo.copyOf()
                 fireTo = nextFireColor()
                 fireTransitionStart = now
-                fireTransitionDuration = Random.nextLong(
-                    (180L - speed * 3L).coerceAtLeast(120L),
-                    (520L - speed * 5L).coerceAtLeast(300L)
-                )
+                fireTransitionDuration = nextTransitionDuration()
                 progress = 0f
             }
 
@@ -80,20 +77,31 @@ class MainActivity : Activity() {
                     .toInt().coerceIn(0, 255)
 
             sendRGB(blend(0), blend(1), blend(2))
-            handler.postDelayed(this, 70L)
+            handler.postDelayed(this, nextFireTick())
         }
     }
 
+    // The selected wheel color is the fire's base hue. Flicker changes brightness
+    // and saturation, not the color family (so blue stays blue, green stays green, etc.).
     private fun nextFireColor(): IntArray {
-        // Natural warm-fire palette: occasional deep ember, orange and bright flame.
-        val red = Random.nextInt(205, 256)
-        val green = when (Random.nextInt(100)) {
-            in 0..18 -> Random.nextInt(24, 52)
-            in 19..68 -> Random.nextInt(52, 105)
-            else -> Random.nextInt(105, 151)
-        }
-        val blue = Random.nextInt(0, 17)
-        return intArrayOf(red, green, blue)
+        val hsv = FloatArray(3)
+        Color.RGBToHSV(red, green, blue, hsv)
+        val hue = (hsv[0] + Random.nextFloat() * 12f - 6f + 360f) % 360f
+        val saturation = (hsv[1] * Random.nextFloat().let { 0.88f + it * 0.12f })
+            .coerceIn(0.15f, 1f)
+        val value = Random.nextFloat().let { 0.38f + it * 0.62f }
+        val rgb = Color.HSVToColor(floatArrayOf(hue, saturation, value))
+        return intArrayOf(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+    }
+
+    // 1 = slow, 20 = fast. Both the flicker interval and transition duration
+    // respond to the slider; the BLE writer still coalesces packets safely.
+    private fun nextFireTick(): Long = (230L - speed * 9L).coerceIn(50L, 221L)
+
+    private fun nextTransitionDuration(): Long {
+        val base = 2600L - speed * 115L
+        return Random.nextLong((base * 0.70f).toLong().coerceAtLeast(180L),
+            (base * 1.30f).toLong().coerceAtLeast(260L))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -187,7 +195,7 @@ class MainActivity : Activity() {
             blue = Color.blue(selectedColor)
             stopFireForManual()
             updatePreview()
-            sendCurrentColor()
+            if (connected) sendCurrentColor()
         }
         val wheelSize = (280 * resources.displayMetrics.density).toInt()
         root.addView(colorWheel, LinearLayout.LayoutParams(wheelSize, wheelSize))
@@ -200,13 +208,6 @@ class MainActivity : Activity() {
         addSlider("Швидкість вогню", speed, 20) {
             speed = it.coerceAtLeast(1)
         }
-
-        root.addView(
-            button("Надіслати колір") {
-                stopFireForManual()
-                sendCurrentColor()
-            }
-        )
 
         fireButton = button("Увімкнути ефект вогню") {
             toggleFire()
@@ -515,7 +516,7 @@ class MainActivity : Activity() {
             fireFrom = intArrayOf(red, green, blue)
             fireTo = nextFireColor()
             fireTransitionStart = SystemClock.uptimeMillis()
-            fireTransitionDuration = Random.nextLong(500L, 1500L)
+            fireTransitionDuration = nextTransitionDuration()
             fireTask.run()
         } else {
             handler.removeCallbacks(fireTask)
