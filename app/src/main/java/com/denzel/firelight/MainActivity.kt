@@ -306,7 +306,7 @@ class MainActivity : Activity() {
         tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
         addGap(tuningCard, 3)
 
-        fun addModernSlider(title: String, initial: Int, maxValue: Int, suffix: String, changed: (Int) -> Unit) {
+        fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -315,24 +315,24 @@ class MainActivity : Activity() {
             val valueView = text("$initial$suffix", 13f, Color.WHITE, true)
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             line.addView(valueView)
-            tuningCard.addView(line)
-            addGap(tuningCard, 7)
+            parent.addView(line)
+            addGap(parent, 7)
             val slider = ModernSliderView(this, initial, maxValue) { value ->
                 valueView.text = "$value$suffix"
                 changed(value)
             }
-            tuningCard.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
-            addGap(tuningCard, 8)
+            parent.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
+            addGap(parent, 8)
         }
 
-        addModernSlider("Яскравість", brightness, 100, "%") {
+        addModernSlider(colorCard, "Яскравість", brightness, 100, "%") {
             brightness = it
             if (!fireEnabled) sendCurrentColor()
         }
-        addModernSlider("Швидкість вогню", speed - 10, 10, "/10") {
+        addModernSlider(tuningCard, "Швидкість вогню", speed - 10, 10, "/10") {
             speed = (it + 10).coerceIn(11, 20)
         }
-        addModernSlider("Розкид кольорів вогню", fireColorSpread, 100, "%") {
+        addModernSlider(tuningCard, "Розкид кольорів вогню", fireColorSpread, 100, "%") {
             fireColorSpread = it.coerceIn(0, 100)
             if (fireEnabled) {
                 fireHueTarget = 0f
@@ -370,8 +370,8 @@ class MainActivity : Activity() {
             setPadding(dp(3), dp(7), dp(3), dp(4))
             setBackground(rounded(Color.rgb(18, 21, 29), 20, Color.rgb(35, 41, 54)))
         }
-        val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Сцени", "Конструктор")
-        val navGlyphs = listOf("", "≋", "◉", "✦", "⌘")
+        val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Сцени", "Музика", "Конструктор")
+        val navGlyphs = listOf("", "≋", "◉", "✦", "♪", "⌘")
         val navItems = mutableListOf<LinearLayout>()
 
         fun selectTab(index: Int) {
