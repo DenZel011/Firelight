@@ -854,6 +854,48 @@ class MainActivity : Activity() {
 }
 
 
+/** Minimal monochrome flame glyph used by the bottom navigation. */
+private class FlameGlyphView(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val side = minOf(width, height).toFloat()
+        if (side <= 0f) return
+        val save = canvas.save()
+        canvas.translate((width - side) / 2f, (height - side) / 2f)
+        canvas.scale(side / 24f, side / 24f)
+
+        val outer = android.graphics.Path().apply {
+            moveTo(12f, 1.5f)
+            cubicTo(13.2f, 5.1f, 18.8f, 7.1f, 18.8f, 13.7f)
+            cubicTo(18.8f, 18.8f, 15.8f, 22f, 11.8f, 22f)
+            cubicTo(7.2f, 22f, 4.5f, 18.8f, 4.5f, 14.4f)
+            cubicTo(4.5f, 10.7f, 6.5f, 8.1f, 8.5f, 6.2f)
+            cubicTo(8.3f, 9.5f, 10.1f, 10.4f, 10.8f, 11.2f)
+            cubicTo(12.2f, 8.2f, 12.8f, 5.4f, 12f, 1.5f)
+            close()
+        }
+        paint.color = Color.WHITE
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(outer, paint)
+
+        val inner = android.graphics.Path().apply {
+            moveTo(12.1f, 12.1f)
+            cubicTo(13.8f, 14.1f, 15.7f, 15.4f, 15.7f, 17.3f)
+            cubicTo(15.7f, 19.4f, 14.1f, 20.7f, 12f, 20.7f)
+            cubicTo(9.8f, 20.7f, 8.2f, 19.2f, 8.2f, 17.1f)
+            cubicTo(8.2f, 15.5f, 9.2f, 14.2f, 10.4f, 13.1f)
+            cubicTo(10.6f, 14.5f, 11.3f, 14.9f, 11.7f, 15.2f)
+            cubicTo(12.2f, 14.2f, 12.3f, 13.1f, 12.1f, 12.1f)
+            close()
+        }
+        paint.color = Color.rgb(48, 39, 39)
+        canvas.drawPath(inner, paint)
+        canvas.restoreToCount(save)
+    }
+}
+
 /** Circular hue/saturation picker. Touch position directly determines the RGB value. */
 private class ColorWheelView(
     context: Context,
