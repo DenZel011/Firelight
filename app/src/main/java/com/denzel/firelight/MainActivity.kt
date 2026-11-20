@@ -301,7 +301,7 @@ class MainActivity : Activity() {
                 override fun onDraw(canvas: Canvas) {
                     super.onDraw(canvas)
                     val cx = width / 2f
-                    val cy = height / 2f - dp(2)
+                    val cy = height / 2f
                     val half = dp(5).toFloat()
                     canvas.drawLine(cx - half, cy - dp(2), cx, cy + dp(3), arrowPaint)
                     canvas.drawLine(cx, cy + dp(3), cx + half, cy - dp(2), arrowPaint)
@@ -318,10 +318,10 @@ class MainActivity : Activity() {
         }
         val connectButton = actionButton("Підключити", true) { startScan() }
         val disconnectButton = actionButton("Від'єднати") { disconnect() }
-        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+        connectionActions.addView(connectButton, LinearLayout.LayoutParams(0, dp(36), 1f).apply {
             marginEnd = dp(8)
         })
-        connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+        connectionActions.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(36), 1f).apply {
             marginStart = dp(8)
         })
         connectionCard.addView(connectionActions)
@@ -339,7 +339,7 @@ class MainActivity : Activity() {
         root.addView(pageHost)
 
         val colorCard = card().apply {
-            setPadding(dp(12), dp(4), dp(12), dp(6))
+            setPadding(dp(12), dp(2), dp(12), dp(6))
         }
         val colorHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -354,7 +354,7 @@ class MainActivity : Activity() {
             topMargin = dp(8)
         })
         colorCard.addView(colorHeader)
-        addGap(colorCard, 4)
+        addGap(colorCard, 2)
         colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
         addGap(colorCard, 8)
 
@@ -956,6 +956,8 @@ private class BulbToggleView(
         val w = width.toFloat()
         val h = height.toFloat()
         val side = minOf(w, h)
+        if (side <= 0f) return
+
         val left = (w - side) / 2f
         val top = (h - side) / 2f
         val radius = 12f * density
@@ -967,32 +969,42 @@ private class BulbToggleView(
         paint.color = if (lit) Color.rgb(111, 68, 60) else Color.rgb(61, 70, 88)
         canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
 
+        // Compact, symmetrical lamp glyph. All strokes stay inside a 24dp
+        // square, leaving a safe margin so the lower base cannot be clipped.
         val cx = w / 2f
-        val cy = h / 2f - 2f * density
-        val bulb = android.graphics.Path().apply {
-            moveTo(cx - 8f * density, cy + 1f * density)
-            cubicTo(cx - 8f * density, cy - 5f * density, cx - 4f * density, cy - 10f * density, cx, cy - 10f * density)
-            cubicTo(cx + 5f * density, cy - 10f * density, cx + 8f * density, cy - 5f * density, cx + 8f * density, cy + 1f * density)
-            cubicTo(cx + 8f * density, cy + 5f * density, cx + 4f * density, cy + 7f * density, cx + 3f * density, cy + 9f * density)
-            lineTo(cx - 3f * density, cy + 9f * density)
-            cubicTo(cx - 4f * density, cy + 7f * density, cx - 8f * density, cy + 5f * density, cx - 8f * density, cy + 1f * density)
+        val cy = h / 2f
+        val d = density
+        val iconColor = if (lit) accent else dim
+        paint.color = iconColor
+        paint.strokeWidth = 1.8f * d
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+
+        val globe = android.graphics.Path().apply {
+            moveTo(cx - 6.5f * d, cy - 1.5f * d)
+            cubicTo(cx - 6.5f * d, cy - 6.2f * d, cx - 3.5f * d, cy - 9f * d, cx, cy - 9f * d)
+            cubicTo(cx + 3.5f * d, cy - 9f * d, cx + 6.5f * d, cy - 6.2f * d, cx + 6.5f * d, cy - 1.5f * d)
+            cubicTo(cx + 6.5f * d, cy + 1.6f * d, cx + 4f * d, cy + 3.5f * d, cx + 3f * d, cy + 5f * d)
+            lineTo(cx - 3f * d, cy + 5f * d)
+            cubicTo(cx - 4f * d, cy + 3.5f * d, cx - 6.5f * d, cy + 1.6f * d, cx - 6.5f * d, cy - 1.5f * d)
             close()
         }
-        paint.color = if (lit) accent else dim
         paint.style = if (lit) Paint.Style.FILL else Paint.Style.STROKE
-        paint.strokeWidth = 2f * density
         if (lit) {
-            paint.setShadowLayer(7f * density, 0f, 0f, 0x66FF8E69)
-            canvas.drawPath(bulb, paint)
+            paint.setShadowLayer(3f * d, 0f, 0f, 0x55FF8E69)
+            canvas.drawPath(globe, paint)
             paint.clearShadowLayer()
         } else {
-            canvas.drawPath(bulb, paint)
+            canvas.drawPath(globe, paint)
         }
+
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f * density
-        paint.strokeCap = Paint.Cap.ROUND
-        canvas.drawLine(cx - 3f * density, cy + 11f * density, cx + 3f * density, cy + 11f * density, paint)
-        canvas.drawLine(cx - 2f * density, cy + 14f * density, cx + 2f * density, cy + 14f * density, paint)
+        paint.strokeWidth = 1.8f * d
+        canvas.drawLine(cx - 3f * d, cy + 7f * d, cx + 3f * d, cy + 7f * d, paint)
+        canvas.drawLine(cx - 2f * d, cy + 9.5f * d, cx + 2f * d, cy + 9.5f * d, paint)
+        canvas.drawLine(cx, cy - 12f * d, cx, cy - 10.5f * d, paint)
+        canvas.drawLine(cx - 10f * d, cy - 4f * d, cx - 8.5f * d, cy - 3f * d, paint)
+        canvas.drawLine(cx + 10f * d, cy - 4f * d, cx + 8.5f * d, cy - 3f * d, paint)
         paint.style = Paint.Style.FILL
     }
 }
