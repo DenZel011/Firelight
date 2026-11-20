@@ -263,6 +263,21 @@ class MainActivity : Activity() {
         root.addView(connectionCard)
         addGap(root, 8)
 
+        val pageHost = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        }
+        val firePage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val fireScroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(0, dp(2), 0, dp(8))
+            addView(firePage, ScrollView.LayoutParams(-1, -2))
+        }
+        pageHost.addView(fireScroll)
+        root.addView(pageHost)
+
         val colorCard = card()
         colorCard.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true))
         addGap(colorCard, 4)
@@ -289,8 +304,8 @@ class MainActivity : Activity() {
             setPadding(0, dp(5), 0, 0)
         }
         colorCard.addView(preview)
-        root.addView(colorCard)
-        addGap(root, 18)
+        firePage.addView(colorCard)
+        addGap(firePage, 12)
 
         val tuningCard = card()
         tuningCard.addView(text("НАЛАШТУВАННЯ", 11f, muted, true))
@@ -331,8 +346,8 @@ class MainActivity : Activity() {
                 fireSaturation = 1f - (1f - fireSaturation) * fireColorSpread / 100f
             }
         }
-        root.addView(tuningCard)
-        addGap(root, 18)
+        firePage.addView(tuningCard)
+        addGap(firePage, 12)
 
         val effectsCard = card()
         effectsCard.addView(text("ЕФЕКТИ ТА ЖИВЛЕННЯ", 11f, muted, true))
@@ -350,9 +365,66 @@ class MainActivity : Activity() {
             marginStart = dp(5)
         })
         effectsCard.addView(effectActions)
-        root.addView(effectsCard)
+        firePage.addView(effectsCard)
 
-        // Fixed screen: no vertical scrolling.
+        // Bottom navigation stays visible on every page. Only the first page
+        // is implemented for now; the remaining tabs are intentionally blank.
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(3), dp(7), dp(3), dp(4))
+            setBackground(rounded(Color.rgb(18, 21, 29), 20, Color.rgb(35, 41, 54)))
+        }
+        val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Сцени", "Конструктор")
+        val navGlyphs = listOf("", "≋", "◉", "✦", "⌘")
+        val navItems = mutableListOf<LinearLayout>()
+
+        fun selectTab(index: Int) {
+            pageHost.removeAllViews()
+            if (index == 0) {
+                pageHost.addView(fireScroll)
+            }
+            navItems.forEachIndexed { i, item ->
+                item.setBackground(rounded(
+                    if (i == index) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                    14,
+                    if (i == index) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+                ))
+                val label = item.getChildAt(1) as TextView
+                label.setTextColor(if (i == index) Color.rgb(255, 142, 105) else muted)
+                if (i == index) label.setTypeface(label.typeface, android.graphics.Typeface.BOLD)
+                else label.setTypeface(label.typeface, android.graphics.Typeface.NORMAL)
+            }
+        }
+
+        navLabels.forEachIndexed { index, labelText ->
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(2), dp(7), dp(2), dp(7))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { selectTab(index) }
+            }
+            if (index == 0) {
+                item.addView(FlameGlyphView(this), LinearLayout.LayoutParams(dp(23), dp(23)))
+            } else {
+                item.addView(text(navGlyphs[index], 21f, Color.WHITE, true).apply {
+                    gravity = android.view.Gravity.CENTER
+                }, LinearLayout.LayoutParams(-1, dp(23)))
+            }
+            item.addView(text(labelText, 9f, muted, false).apply {
+                gravity = android.view.Gravity.CENTER
+                maxLines = 1
+            })
+            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f))
+            navItems.add(item)
+        }
+        root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(7)
+        })
+        selectTab(0)
+
         setContentView(root)
     }
 
