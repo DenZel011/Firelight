@@ -473,50 +473,62 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(2), 0, dp(8))
         }
+        scenePage.addView(text("СЦЕНИ", 11f, muted, true))
+        addGap(scenePage, 12)
+
+        val sceneNames = listOf("Заповнення", "Схід сонця")
+        val sceneSymbols = listOf("▥", "☀")
+        val sceneColors = listOf(
+            intArrayOf(0, 80, 255),
+            intArrayOf(255, 0, 0)
+        )
+        var selectedSceneIndex = 0
+
         val sceneCard = card().apply {
             setPadding(dp(18), dp(20), dp(18), dp(20))
             gravity = android.view.Gravity.CENTER
             clipChildren = false
             clipToPadding = false
         }
-        sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
-        addGap(sceneCard, 18)
-
-        val sceneNames = listOf("Заповнення", "Схід сонця")
-        val sceneDescriptions = listOf(
-            "Світлодіоди поступово загоряються один за одним.",
-            "Тепле світло плавно набирає яскравість, наче ранковий світанок."
-        )
-        val sceneSymbols = listOf("▥", "☀")
-        var selectedSceneIndex = 0
         val sceneSymbol = text(sceneSymbols[0], 48f, Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
         sceneCard.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
-        addGap(sceneCard, 10)
+        addGap(sceneCard, 12)
         val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
         sceneCard.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
-        addGap(sceneCard, 10)
-        val sceneDescription = text(sceneDescriptions[0], 14f, muted, false).apply {
-            gravity = android.view.Gravity.CENTER
-            maxLines = Int.MAX_VALUE
-            ellipsize = null
-        }
-        sceneCard.addView(sceneDescription, LinearLayout.LayoutParams(-1, -2))
         addGap(sceneCard, 22)
         val scenePosition = text("01 / 02", 12f, Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
         sceneCard.addView(scenePosition)
+
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val sceneHint = text("Гортай ліворуч або праворуч", 12f, muted, false).apply {
-            gravity = android.view.Gravity.CENTER
-            setPadding(dp(8), dp(12), dp(8), dp(4))
+        fun applySceneColor(index: Int) {
+            val rgb = sceneColors[index]
+            red = rgb[0]; green = rgb[1]; blue = rgb[2]
+            if (::preview.isInitialized) updatePreview()
+            selectedSessions().forEach { d ->
+                stopActiveEffect(d)
+                d.red = red; d.green = green; d.blue = blue
+                d.mode = EffectMode.NONE
+                if (!d.stripOn) {
+                    d.stripOn = true
+                    d.stripStateKnown = true
+                    sendPowerCommand(d, true)
+                }
+                handler.postDelayed({
+                    if (d.connected && d.stripOn && d.mode == EffectMode.NONE) {
+                        sendRGBTo(d, red, green, blue)
+                    }
+                }, 180L)
+            }
+            refreshEffectButtons()
+            activateSelectedSession()
         }
-        scenePage.addView(sceneHint)
 
         fun showScene(nextIndex: Int, swipeLeft: Boolean) {
             selectedSceneIndex = (nextIndex + sceneNames.size) % sceneNames.size
@@ -525,10 +537,10 @@ class MainActivity : Activity() {
             sceneCard.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
                 sceneSymbol.text = sceneSymbols[selectedSceneIndex]
                 sceneName.text = sceneNames[selectedSceneIndex]
-                sceneDescription.text = sceneDescriptions[selectedSceneIndex]
                 scenePosition.text = "%02d / %02d".format(selectedSceneIndex + 1, sceneNames.size)
                 sceneCard.translationX = -exitX
                 sceneCard.animate().translationX(0f).alpha(1f).setDuration(190L).start()
+                applySceneColor(selectedSceneIndex)
             }.start()
         }
 
