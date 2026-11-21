@@ -764,20 +764,11 @@ class MainActivity : Activity() {
                 session.notifyCharacteristic = null
                 session.stripStateKnown = false
                 session.stripOn = false
+                stopActiveEffect(session)
                 try { g.close() } catch (_: Exception) {}
                 session.gatt = null
                 runOnUiThread {
-                    if (session.address == selectedDeviceAddress.uppercase()) {
-                        connected = false
-                        gatt = null
-                        characteristic = null
-                        notifyCharacteristic = null
-                        stripStateKnown = false
-                        stripOn = false
-                        stopActiveEffect(session)
-                        bulbButton.setLit(null)
-                        status.text = "Обраний контролер від'єднано"
-                    }
+                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
                     deviceAdapter?.notifyDataSetChanged()
                 }
             }
@@ -792,7 +783,7 @@ class MainActivity : Activity() {
             session.notifyCharacteristic = powerState
             runOnUiThread {
                 if (statusCode == BluetoothGatt.GATT_SUCCESS && writeChar != null) {
-                    if (session.address == selectedDeviceAddress.uppercase()) activateSelectedSession()
+                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
                     val canNotify = powerState != null &&
                         (powerState.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
                             BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
