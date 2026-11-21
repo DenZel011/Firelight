@@ -657,7 +657,11 @@ class MainActivity : Activity() {
             when (index) {
                 0 -> pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
                 2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
-                3 -> pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
+                3 -> {
+                    pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
+                    fillSpeedCard.visibility = if (selectedSceneIndex == 0) View.VISIBLE else View.GONE
+                    applySceneColor(selectedSceneIndex)
+                }
             }
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
@@ -1523,6 +1527,7 @@ class MainActivity : Activity() {
 
     private fun stopActiveEffect(d:DeviceSession) {
         d.fireRunner?.let{handler.removeCallbacks(it)};d.rainbowRunner?.let{handler.removeCallbacks(it)}
+        d.fillSpeedRunner?.let{handler.removeCallbacks(it)}
         d.mode=EffectMode.NONE
     }
     private fun stopActiveEffect() { selectedSessions().forEach{stopActiveEffect(it)};refreshEffectButtons() }
