@@ -506,7 +506,7 @@ class MainActivity : Activity() {
         }
         sceneHeader.addView(sceneModeIcons, LinearLayout.LayoutParams(0, dp(40), 1f))
         sceneCard.addView(sceneHeader, LinearLayout.LayoutParams(-1, dp(40)))
-        addGap(sceneCard, 4)
+        addGap(sceneCard, 0)
 
         val sceneContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -525,7 +525,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
         }
         sceneContent.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
-        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f))
+        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun applySceneColor(index: Int) {
