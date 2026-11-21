@@ -30,6 +30,17 @@ class MainActivity : Activity() {
     private var scanner: BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
+    private data class DeviceSession(
+        val address: String,
+        val isMelk: Boolean,
+        var gatt: BluetoothGatt? = null,
+        var characteristic: BluetoothGattCharacteristic? = null,
+        var notifyCharacteristic: BluetoothGattCharacteristic? = null,
+        var connected: Boolean = false,
+        var stripOn: Boolean = false,
+        var stripStateKnown: Boolean = false
+    )
+    private val sessions = linkedMapOf<String, DeviceSession>()
 
     private var connected = false
     private var fireEnabled = false
@@ -86,7 +97,9 @@ class MainActivity : Activity() {
     private val scanTimeout = Runnable {
         if (scanning) {
             stopScan()
-            status.text = "Контролери не знайдено. Перевір, що пристрій увімкнений."
+            val found = sessions.values.count { it.gatt != null }
+            status.text = if (found > 0) "Підключено $found із 2 контролерів"
+                else "Контролери не знайдено. Перевір, що пристрої увімкнені."
             deviceAdapter?.notifyDataSetChanged()
         }
     }
@@ -188,10 +201,18 @@ class MainActivity : Activity() {
             // at the fastest slider setting it actually waited several seconds.
             if (now >= fireNextChangeAt) {
                 val roll = Random.nextFloat()
-                fireLevelTarget = when {
-                    roll < 0.13f -> Random.nextFloat() * 0.42f + 0.56f // quick flare
-                    roll < 0.34f -> Random.nextFloat() * 0.38f + 0.30f // ember dip
-                    else -> Random.nextFloat() * 0.38f + 0.48f
+                fireLevelTarget = if (isMelkDevice) {
+                    when {
+                        roll < 0.12f -> Random.nextFloat() * 0.34f + 0.66f
+                        roll < 0.48f -> Random.nextFloat() * 0.24f + 0.08f
+                        else -> Random.nextFloat() * 0.38f + 0.30f
+                    }
+                } else {
+                    when {
+                        roll < 0.13f -> Random.nextFloat() * 0.42f + 0.56f
+                        roll < 0.34f -> Random.nextFloat() * 0.38f + 0.30f
+                        else -> Random.nextFloat() * 0.38f + 0.48f
+                    }
                 }
                 // Color spread is user-controlled: 0 keeps the exact selected hue
                 // and saturation; 100 allows the full hue wheel to appear.
@@ -201,12 +222,17 @@ class MainActivity : Activity() {
                 fireSaturationTarget = 1f - Random.nextFloat() * 0.42f * spread
                 // Most flickers stay sharp; occasionally the flame rolls gently
                 // into its next state, like a slower, softer tongue of fire.
-                fireSmoothingMs = if (Random.nextFloat() < 0.32f) {
+                fireSmoothingMs = if (isMelkDevice) {
+                    if (Random.nextFloat() < 0.24f) Random.nextFloat() * 140f + 170f
+                    else Random.nextFloat() * 42f + 42f
+                } else if (Random.nextFloat() < 0.32f) {
                     Random.nextFloat() * 250f + 260f
                 } else {
                     Random.nextFloat() * 48f + 58f
                 }
-                if (roll < 0.13f) fireFlare = Random.nextFloat() * 0.24f + 0.12f
+                if (roll < 0.13f) fireFlare = if (isMelkDevice)
+                    Random.nextFloat() * 0.30f + 0.16f
+                else Random.nextFloat() * 0.24f + 0.12f
                 val interval = 330L - (speed.coerceIn(11, 20) - 11) * 28L
                 fireNextChangeAt = now + Random.nextLong((interval * 0.55f).toLong().coerceAtLeast(45L),
                     (interval * 1.15f).toLong().coerceAtLeast(70L))
@@ -220,7 +246,11 @@ class MainActivity : Activity() {
 
             val slowWave = kotlin.math.sin(now / 510.0).toFloat() * 0.045f
             val secondaryWave = kotlin.math.sin(now / 91.0).toFloat() * 0.035f
-            val level = (fireLevel + slowWave + secondaryWave + fireFlare).coerceIn(0.22f, 1f)
+            val rawLevel = (fireLevel + slowWave + secondaryWave + fireFlare)
+                .coerceIn(if (isMelkDevice) 0.07f else 0.22f, 1f)
+            val level = if (isMelkDevice) {
+                Math.pow(rawLevel.toDouble(), 1.65).toFloat().coerceIn(0.025f, 1f)
+            } else rawLevel
 
             val hsv = FloatArray(3)
             Color.RGBToHSV(red, green, blue, hsv)
@@ -358,7 +388,7 @@ class MainActivity : Activity() {
         deviceAdapter = object : ArrayAdapter<String>(
             this, android.R.layout.simple_spinner_item, deviceNames
         ) {
-            override fun isEnabled(position: Int): Boolean = !connected
+            override fun isEnabled(position: Int): Boolean = true
 
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 val chosen = if (position == 0) targetAddress else melkAddress
@@ -375,9 +405,11 @@ class MainActivity : Activity() {
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
                     val chosen = if (position == 0) targetAddress else melkAddress
+                    val session = sessions[chosen.uppercase()]
                     text = when {
-                        connected && chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
-                            "${deviceNames[position]}     Підключено"
+                        session?.connected == true && chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
+                            "${deviceNames[position]}     Підключено · обрано"
+                        session?.connected == true -> "${deviceNames[position]}     Підключено"
                         chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
                             "${deviceNames[position]}     Обрано"
                         else -> deviceNames[position]
@@ -398,6 +430,7 @@ class MainActivity : Activity() {
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
                     selectedDeviceAddress = if (position == 1) melkAddress else targetAddress
+                    activateSelectedSession()
                     deviceAdapter?.notifyDataSetChanged()
                 }
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
@@ -697,33 +730,24 @@ class MainActivity : Activity() {
     }
 
     private fun startScan() {
-        if (connected) {
-            status.text = if (isMelkDevice) "Вже підключено до MELK-OA21 2C" else "Вже підключено до ELK-BLEDOB"
-            return
-        }
         if (!hasBluetoothPermissions()) {
             requestBluetoothPermissions()
-            Toast.makeText(
-                this,
-                "Надай дозволи Bluetooth",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Надай дозволи Bluetooth", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val manager =
-            getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = manager.adapter
-
         if (!adapter.isEnabled) {
-            Toast.makeText(
-                this,
-                "Увімкни Bluetooth",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Увімкни Bluetooth", Toast.LENGTH_SHORT).show()
             return
         }
-
+        val missingAddresses = listOf(targetAddress, melkAddress).filter { address ->
+            sessions[address.uppercase()]?.gatt == null
+        }
+        if (missingAddresses.isEmpty()) {
+            status.text = "Обидва контролери вже підключені"
+            return
+        }
         stopScan()
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
@@ -731,19 +755,19 @@ class MainActivity : Activity() {
             status.text = "BLE-сканер недоступний"
             return
         }
-
-        closeGattConnection()
-        status.text = "Шукаю ELK-BLEDOB або MELK-OA21 2C..."
+        status.text = "Шукаю обидва контролери..."
         scanning = true
         try {
-            val filter = ScanFilter.Builder().setDeviceAddress(selectedDeviceAddress).build()
+            val filters = missingAddresses.map { address ->
+                ScanFilter.Builder().setDeviceAddress(address).build()
+            }
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
-            activeScanner.startScan(listOf(filter), settings, scanCallback)
+            activeScanner.startScan(filters, settings, scanCallback)
             handler.removeCallbacks(scanTimeout)
-            handler.postDelayed(scanTimeout, 10000)
+            handler.postDelayed(scanTimeout, 12000L)
         } catch (e: SecurityException) {
             scanning = false
             status.text = "Немає дозволу Bluetooth"
@@ -756,24 +780,19 @@ class MainActivity : Activity() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = try { result.device.address } catch (_: SecurityException) { "" }
-            if (address.equals(selectedDeviceAddress, ignoreCase = true)) {
-                stopScan()
-                runOnUiThread {
-                    status.text = if (address.equals(melkAddress, ignoreCase = true))
-                        "Знайшов MELK-OA21 2C. Підключаюся..."
-                    else "Знайшов ELK-BLEDOB. Підключаюся..."
-                    connect(result.device)
-                }
+            if (!address.equals(targetAddress, true) && !address.equals(melkAddress, true)) return
+            if (sessions[address.uppercase()]?.gatt != null) return
+            runOnUiThread {
+                status.text = if (address.equals(melkAddress, true))
+                    "Знайшов MELK-OA21 2C · підключаю..."
+                else "Знайшов ELK-BLEDOB · підключаю..."
+                connect(result.device)
+                if (sessions.values.count { it.gatt != null } >= 2) stopScan()
             }
         }
-
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
-            results.firstOrNull {
-                try { it.device.address.equals(selectedDeviceAddress, ignoreCase = true) }
-                catch (_: SecurityException) { false }
-            }?.let { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
+            results.forEach { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
-
         override fun onScanFailed(errorCode: Int) {
             scanning = false
             runOnUiThread { status.text = "Помилка BLE-сканування: $errorCode" }
@@ -783,14 +802,8 @@ class MainActivity : Activity() {
     private fun stopScan() {
         handler.removeCallbacks(scanTimeout)
         if (!scanning) return
-
         scanning = false
-
-        try {
-            scanner?.stopScan(scanCallback)
-        } catch (_: SecurityException) {
-        } catch (_: Exception) {
-        }
+        try { scanner?.stopScan(scanCallback) } catch (_: Exception) {}
     }
 
     private fun classifyDeviceLayout(device: BluetoothDevice): DeviceLayout {
@@ -803,99 +816,102 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun activateSelectedSession() {
+        val session = sessions[selectedDeviceAddress.uppercase()]
+        gatt = session?.gatt
+        characteristic = session?.characteristic
+        notifyCharacteristic = session?.notifyCharacteristic
+        connected = session?.connected == true
+        isMelkDevice = session?.isMelk == true
+        deviceLayout = if (isMelkDevice) DeviceLayout.SEQUENTIAL else DeviceLayout.SIMULTANEOUS
+        stripOn = session?.stripOn ?: false
+        stripStateKnown = session?.stripStateKnown ?: false
+        bulbButton.setLit(if (connected && stripStateKnown) stripOn else null)
+        status.text = if (!connected) {
+            if (session?.gatt != null) "Підключаюся до обраного контролера..."
+            else "Обраний контролер ще не підключений"
+        } else if (stripStateKnown) {
+            if (stripOn) "Підключено · стрічка увімкнена" else "Підключено · стрічка вимкнена"
+        } else "Підключено · стан стрічки перевіряється"
+        deviceAdapter?.notifyDataSetChanged()
+    }
+
     private fun connect(device: BluetoothDevice) {
-        status.text = "Підключення..."
-
+        val address = try { device.address.uppercase() } catch (_: SecurityException) { return }
+        val isMelk = address == melkAddress.uppercase()
+        val session = sessions.getOrPut(address) { DeviceSession(address, isMelk) }
+        if (session.gatt != null) return
+        if (address == selectedDeviceAddress.uppercase()) {
+            status.text = "Підключення..."
+            connected = false
+        }
         try {
-            closeGattConnection()
-            deviceLayout = classifyDeviceLayout(device)
-            isMelkDevice = device.address.equals(melkAddress, ignoreCase = true)
-            stripStateKnown = false
-            stripOn = false
-            bulbButton.setLit(null)
-
-            gatt = device.connectGatt(
-                this,
-                false,
-                gattCallback,
-                BluetoothDevice.TRANSPORT_LE
-            )
-
-        } catch (e: SecurityException) {
-            status.text = "Помилка дозволу Bluetooth"
+            session.gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            deviceAdapter?.notifyDataSetChanged()
+        } catch (_: SecurityException) {
+            if (address == selectedDeviceAddress.uppercase()) status.text = "Помилка дозволу Bluetooth"
         }
     }
 
+    private fun sessionFor(g: BluetoothGatt): DeviceSession? =
+        sessions.values.firstOrNull { it.gatt === g }
+
     private val gattCallback = object : BluetoothGattCallback() {
-
-        override fun onConnectionStateChange(
-            g: BluetoothGatt,
-            statusCode: Int,
-            newState: Int
-        ) {
-            if (g !== gatt) return
+        override fun onConnectionStateChange(g: BluetoothGatt, statusCode: Int, newState: Int) {
+            val session = sessionFor(g) ?: return
             if (newState == BluetoothProfile.STATE_CONNECTED && statusCode == BluetoothGatt.GATT_SUCCESS) {
-                connected = true
-                stripStateKnown = false
-                stripOn = false
-                notifyCharacteristic = null
-                characteristic = null
+                session.connected = true
+                session.stripStateKnown = false
+                session.stripOn = false
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
-
                 runOnUiThread {
-                    status.text = "Підключено. Пошук характеристик..."
+                    if (session.address == selectedDeviceAddress.uppercase()) activateSelectedSession()
+                    else {
+                        status.text = "Підключено один контролер · шукаю другий..."
+                        deviceAdapter?.notifyDataSetChanged()
+                    }
                 }
-
-                try {
-                    g.discoverServices()
-                } catch (_: SecurityException) {
-                }
-
+                try { g.discoverServices() } catch (_: SecurityException) {}
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                if (g !== gatt) return
-                connected = false
-                characteristic = null
-                notifyCharacteristic = null
-                stripStateKnown = false
-                fireEnabled = false
-                stripOn = false
-                handler.removeCallbacks(fireTask)
-
-                runOnUiThread {
-                    status.text = "Від'єднано"
-                    deviceAdapter?.notifyDataSetChanged()
-                    stopActiveEffect()
-                    bulbButton.setLit(null)
-                }
-
+                session.connected = false
+                session.characteristic = null
+                session.notifyCharacteristic = null
+                session.stripStateKnown = false
+                session.stripOn = false
                 try { g.close() } catch (_: Exception) {}
-                if (g === gatt) gatt = null
+                session.gatt = null
+                runOnUiThread {
+                    if (session.address == selectedDeviceAddress.uppercase()) {
+                        connected = false
+                        gatt = null
+                        characteristic = null
+                        notifyCharacteristic = null
+                        stripStateKnown = false
+                        stripOn = false
+                        stopActiveEffect()
+                        bulbButton.setLit(null)
+                        status.text = "Обраний контролер від'єднано"
+                    }
+                    deviceAdapter?.notifyDataSetChanged()
+                }
             }
         }
 
-        override fun onServicesDiscovered(
-            g: BluetoothGatt,
-            statusCode: Int
-        ) {
-            if (g !== gatt) return
+        override fun onServicesDiscovered(g: BluetoothGatt, statusCode: Int) {
+            val session = sessionFor(g) ?: return
             val service = g.getService(serviceUUID)
-            characteristic = service?.getCharacteristic(writeUUID)
+            val writeChar = service?.getCharacteristic(writeUUID)
             val powerState = service?.getCharacteristic(powerNotifyUUID)
-            notifyCharacteristic = powerState
-
+            session.characteristic = writeChar
+            session.notifyCharacteristic = powerState
             runOnUiThread {
-                if (statusCode == BluetoothGatt.GATT_SUCCESS && characteristic != null) {
-                    stripStateKnown = false
-                    stripOn = false
-                    bulbButton.setLit(null)
-                    deviceAdapter?.notifyDataSetChanged()
-
+                if (statusCode == BluetoothGatt.GATT_SUCCESS && writeChar != null) {
+                    if (session.address == selectedDeviceAddress.uppercase()) activateSelectedSession()
                     val canNotify = powerState != null &&
                         (powerState.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
                             BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
                     val canRead = powerState != null &&
                         (powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0
-
                     if (canNotify) {
                         try {
                             g.setCharacteristicNotification(powerState, true)
@@ -917,95 +933,69 @@ class MainActivity : Activity() {
                             }
                         } catch (_: Exception) {}
                     }
-                    if (isMelkDevice) {
-                        status.text = "MELK знайдено · ініціалізую контролер…"
-                        writeBlePacket(byteArrayOf(0x7E, 0x07, 0x83.toByte()))
+                    if (session.isMelk) {
+                        if (session.address == selectedDeviceAddress.uppercase())
+                            status.text = "MELK знайдено · ініціалізую контролер…"
+                        writeBlePacketTo(g, writeChar, byteArrayOf(0x7E, 0x07, 0x83.toByte()))
                         handler.postDelayed({
-                            if (g === gatt && connected) {
-                                writeBlePacket(byteArrayOf(0x7E, 0x04, 0x04))
-                                status.text = "MELK-OA21 2C підключено · стан не передається"
+                            if (session.gatt === g && session.connected) {
+                                writeBlePacketTo(g, writeChar, byteArrayOf(0x7E, 0x04, 0x04))
+                                if (session.address == selectedDeviceAddress.uppercase())
+                                    status.text = "MELK-OA21 2C підключено · стан не передається"
                             }
                         }, 140L)
                     } else {
                         if (canRead && !canNotify) {
                             try { g.readCharacteristic(powerState) } catch (_: Exception) {}
                         }
-                        status.text = if (canNotify || canRead) {
-                            "Підключено · перевіряю стан стрічки…"
-                        } else {
-                            "Підключено · контролер не повідомляє стан"
+                        if (session.address == selectedDeviceAddress.uppercase()) {
+                            status.text = if (canNotify || canRead)
+                                "Підключено · перевіряю стан стрічки…"
+                            else "Підключено · контролер не повідомляє стан"
+                            handler.removeCallbacks(powerStateTimeout)
+                            handler.postDelayed(powerStateTimeout, 1800L)
                         }
-                        handler.removeCallbacks(powerStateTimeout)
-                        handler.postDelayed(powerStateTimeout, 1800L)
                     }
-                } else {
+                    deviceAdapter?.notifyDataSetChanged()
+                } else if (session.address == selectedDeviceAddress.uppercase()) {
                     status.text = "Не знайдено FFF0 / FFF3"
                 }
             }
         }
 
         @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
-        override fun onCharacteristicChanged(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            if (g !== this@MainActivity.gatt) return
-            if (characteristic.uuid == powerNotifyUUID) {
-                updatePowerStateFromPacket(characteristic.value)
-            }
+        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            val session = sessionFor(g) ?: return
+            if (characteristic.uuid == powerNotifyUUID)
+                updatePowerStateFromPacket(session, characteristic.value)
         }
-
-        override fun onCharacteristicChanged(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
-            if (g !== this@MainActivity.gatt) return
-            if (characteristic.uuid == powerNotifyUUID) {
-                updatePowerStateFromPacket(value)
-            }
+        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+            val session = sessionFor(g) ?: return
+            if (characteristic.uuid == powerNotifyUUID)
+                updatePowerStateFromPacket(session, value)
         }
-
         @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
-        override fun onCharacteristicRead(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
-        ) {
-            if (g !== this@MainActivity.gatt) return
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
-                updatePowerStateFromPacket(characteristic.value)
-            }
+        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            val session = sessionFor(g) ?: return
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID)
+                updatePowerStateFromPacket(session, characteristic.value)
         }
-
-        override fun onCharacteristicRead(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray,
-            status: Int
-        ) {
-            if (g !== this@MainActivity.gatt) return
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID) {
-                updatePowerStateFromPacket(value)
-            }
+        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            val session = sessionFor(g) ?: return
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID)
+                updatePowerStateFromPacket(session, value)
         }
-
-        override fun onDescriptorWrite(
-            g: BluetoothGatt,
-            descriptor: BluetoothGattDescriptor,
-            status: Int
-        ) {
-            if (g !== this@MainActivity.gatt || status != BluetoothGatt.GATT_SUCCESS) return
-            val powerState = notifyCharacteristic ?: return
-            if (descriptor.uuid == cccdUUID &&
-                (powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0
-            ) {
+        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            val session = sessionFor(g) ?: return
+            if (status != BluetoothGatt.GATT_SUCCESS || descriptor.uuid != cccdUUID) return
+            val powerState = session.notifyCharacteristic ?: return
+            if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0) {
                 try { g.readCharacteristic(powerState) } catch (_: Exception) {}
             }
         }
     }
 
-    private fun updatePowerStateFromPacket(packet: ByteArray?) {
+    private fun updatePowerStateFromPacket(session: DeviceSession, packet: ByteArray?) {
         if (packet == null || packet.size < 4 || packet[0] != 0x7E.toByte()) return
         if (packet[2] != 0x04.toByte()) return
         val isOn = when (packet[3].toInt() and 0xFF) {
@@ -1013,8 +1003,13 @@ class MainActivity : Activity() {
             0x00 -> false
             else -> return
         }
+        session.stripOn = isOn
+        session.stripStateKnown = true
         runOnUiThread {
-            if (!connected) return@runOnUiThread
+            if (session.address != selectedDeviceAddress.uppercase()) {
+                deviceAdapter?.notifyDataSetChanged()
+                return@runOnUiThread
+            }
             handler.removeCallbacks(powerStateTimeout)
             stripOn = isOn
             stripStateKnown = true
@@ -1026,11 +1021,7 @@ class MainActivity : Activity() {
     }
 
     private fun sendPowerCommand(on: Boolean) {
-        // MELK's confirmed wake/on frame is the short command used at initialization.
-        // Keep ELK's original Lotus Lantern power frames unchanged.
-        val packet = if (isMelkDevice && on) {
-            byteArrayOf(0x7E, 0x04, 0x04)
-        } else if (on) {
+        val packet = if (on) {
             byteArrayOf(0x7E, 0x04, 0x04, 0xF0.toByte(), 0x00, 0x01, 0xFF.toByte(), 0x00, 0xEF.toByte())
         } else {
             byteArrayOf(0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
@@ -1041,6 +1032,10 @@ class MainActivity : Activity() {
     private fun writeBlePacket(packet: ByteArray) {
         val g = gatt ?: return
         val char = characteristic ?: return
+        writeBlePacketTo(g, char, packet)
+    }
+
+    private fun writeBlePacketTo(g: BluetoothGatt, char: BluetoothGattCharacteristic, packet: ByteArray) {
         try {
             val supportsNoResponse =
                 (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
@@ -1060,7 +1055,7 @@ class MainActivity : Activity() {
                 if (g.writeCharacteristic(char)) BluetoothGatt.GATT_SUCCESS
                 else BluetoothGatt.GATT_FAILURE
             }
-            lastWriteAt = SystemClock.uptimeMillis()
+            if (g === gatt) lastWriteAt = SystemClock.uptimeMillis()
             if (result != BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { status.text = "BLE не прийняв команду живлення (код $result)" }
             }
@@ -1074,7 +1069,7 @@ class MainActivity : Activity() {
     }
 
     private fun sendRGB(r: Int, g: Int, b: Int) {
-        if (characteristic == null || gatt == null) return
+        if (characteristic == null || gatt == null || !connected) return
         val factor = brightness / 100.0
         val rr = (r * factor).toInt().coerceIn(0, 255)
         val gg = (g * factor).toInt().coerceIn(0, 255)
@@ -1253,16 +1248,20 @@ class MainActivity : Activity() {
 
     private fun closeGattConnection() {
         handler.removeCallbacks(powerStateTimeout)
-        val oldGatt = gatt
+        sessions.values.forEach { session ->
+            val oldGatt = session.gatt
+            session.gatt = null
+            session.characteristic = null
+            session.notifyCharacteristic = null
+            session.connected = false
+            session.stripOn = false
+            session.stripStateKnown = false
+            try { oldGatt?.disconnect(); oldGatt?.close() } catch (_: Exception) {}
+        }
         gatt = null
         connected = false
         characteristic = null
         notifyCharacteristic = null
-        try {
-            oldGatt?.disconnect()
-            oldGatt?.close()
-        } catch (_: Exception) {
-        }
     }
 
     private fun disconnect() {
@@ -1270,6 +1269,7 @@ class MainActivity : Activity() {
         stopActiveEffect()
         handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
+        sessions.clear()
         pendingPacket = null
         writeScheduled = false
         stripStateKnown = false
