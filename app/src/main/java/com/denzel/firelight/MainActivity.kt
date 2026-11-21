@@ -474,11 +474,12 @@ class MainActivity : Activity() {
             setPadding(0, dp(2), 0, dp(8))
         }
 
-        val sceneNames = listOf("Заповнення", "Схід сонця")
-        val sceneSymbols = listOf("▥", "☀")
+        val sceneNames = listOf("Заповнення", "Схід сонця", "Завантаження")
+        val sceneSymbols = listOf("◩", "☀", "⤓")
         val sceneColors = listOf(
             intArrayOf(0, 80, 255),
-            intArrayOf(255, 0, 0)
+            intArrayOf(255, 0, 0),
+            intArrayOf(0, 255, 0)
         )
         var selectedSceneIndex = 0
 
