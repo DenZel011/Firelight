@@ -78,12 +78,14 @@ class MainActivity : Activity() {
     private var writeScheduled = false
     private var lastWriteAt = 0L
     private val targetAddress = "BE:27:8A:00:73:DE"
+    private val melkAddress = "BE:28:96:00:42:2C"
+    private var isMelkDevice = false
     private val powerNotifyUUID = UUID.fromString("0000FFF4-0000-1000-8000-00805F9B34FB")
     private val cccdUUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
     private val scanTimeout = Runnable {
         if (scanning) {
             stopScan()
-            status.text = "ELK-BLEDOB не знайдено. Перевір, що контролер увімкнений."
+            status.text = "Контролери не знайдено. Перевір, що пристрій увімкнений."
             deviceAdapter?.notifyDataSetChanged()
         }
     }
@@ -678,7 +680,7 @@ class MainActivity : Activity() {
 
     private fun startScan() {
         if (connected) {
-            status.text = "Вже підключено до ELK-BLEDOB"
+            status.text = if (isMelkDevice) "Вже підключено до MELK-OA21 2C" else "Вже підключено до ELK-BLEDOB"
             return
         }
         if (!hasBluetoothPermissions()) {
@@ -713,15 +715,18 @@ class MainActivity : Activity() {
         }
 
         closeGattConnection()
-        status.text = "Шукаю тільки ELK-BLEDOB ($targetAddress)..."
+        status.text = "Шукаю ELK-BLEDOB або MELK-OA21 2C..."
         scanning = true
         try {
-            val filter = ScanFilter.Builder().setDeviceAddress(targetAddress).build()
+            val filters = listOf(
+                ScanFilter.Builder().setDeviceAddress(targetAddress).build(),
+                ScanFilter.Builder().setDeviceAddress(melkAddress).build()
+            )
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
-            activeScanner.startScan(listOf(filter), settings, scanCallback)
+            activeScanner.startScan(filters, settings, scanCallback)
             handler.removeCallbacks(scanTimeout)
             handler.postDelayed(scanTimeout, 10000)
         } catch (e: SecurityException) {
@@ -736,10 +741,13 @@ class MainActivity : Activity() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = try { result.device.address } catch (_: SecurityException) { "" }
-            if (address.equals(targetAddress, ignoreCase = true)) {
+            if (address.equals(targetAddress, ignoreCase = true) ||
+                address.equals(melkAddress, ignoreCase = true)) {
                 stopScan()
                 runOnUiThread {
-                    status.text = "Знайшов ELK-BLEDOB. Підключаюся..."
+                    status.text = if (address.equals(melkAddress, ignoreCase = true))
+                        "Знайшов MELK-OA21 2C. Підключаюся..."
+                    else "Знайшов ELK-BLEDOB. Підключаюся..."
                     connect(result.device)
                 }
             }
@@ -747,8 +755,10 @@ class MainActivity : Activity() {
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
             results.firstOrNull {
-                try { it.device.address.equals(targetAddress, ignoreCase = true) }
-                catch (_: SecurityException) { false }
+                try {
+                    it.device.address.equals(targetAddress, ignoreCase = true) ||
+                        it.device.address.equals(melkAddress, ignoreCase = true)
+                } catch (_: SecurityException) { false }
             }?.let { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
 
@@ -774,10 +784,10 @@ class MainActivity : Activity() {
     private fun classifyDeviceLayout(device: BluetoothDevice): DeviceLayout {
         // ELK-BLEDOB drives every LED with one shared RGB value. The future
         // sequential panel will be added here as a separate device identity.
-        return if (device.address.equals(targetAddress, ignoreCase = true)) {
-            DeviceLayout.SIMULTANEOUS
-        } else {
+        return if (device.address.equals(melkAddress, ignoreCase = true)) {
             DeviceLayout.SEQUENTIAL
+        } else {
+            DeviceLayout.SIMULTANEOUS
         }
     }
 
@@ -787,6 +797,7 @@ class MainActivity : Activity() {
         try {
             closeGattConnection()
             deviceLayout = classifyDeviceLayout(device)
+            isMelkDevice = device.address.equals(melkAddress, ignoreCase = true)
             stripStateKnown = false
             stripOn = false
             bulbButton.setLit(null)
@@ -894,16 +905,31 @@ class MainActivity : Activity() {
                             }
                         } catch (_: Exception) {}
                     }
-                    if (canRead && !canNotify) {
-                        try { g.readCharacteristic(powerState) } catch (_: Exception) {}
-                    }
-                    status.text = if (canNotify || canRead) {
-                        "Підключено · перевіряю стан стрічки…"
+                    if (isMelkDevice) {
+                        status.text = "MELK знайдено · ініціалізую контролер…"
+                        writeBlePacket(byteArrayOf(
+                            0x7E, 0x07, 0x83.toByte(), 0x00, 0x00, 0x00, 0x00, 0x00, 0xEF.toByte()
+                        ))
+                        handler.postDelayed({
+                            if (g === gatt && connected) {
+                                writeBlePacket(byteArrayOf(
+                                    0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEF.toByte()
+                                ))
+                                status.text = "MELK-OA21 2C підключено · стан не передається"
+                            }
+                        }, 140L)
                     } else {
-                        "Підключено · контролер не повідомляє стан"
+                        if (canRead && !canNotify) {
+                            try { g.readCharacteristic(powerState) } catch (_: Exception) {}
+                        }
+                        status.text = if (canNotify || canRead) {
+                            "Підключено · перевіряю стан стрічки…"
+                        } else {
+                            "Підключено · контролер не повідомляє стан"
+                        }
+                        handler.removeCallbacks(powerStateTimeout)
+                        handler.postDelayed(powerStateTimeout, 1800L)
                     }
-                    handler.removeCallbacks(powerStateTimeout)
-                    handler.postDelayed(powerStateTimeout, 1800L)
                 } else {
                     status.text = "Не знайдено FFF0 / FFF3"
                 }
@@ -1043,11 +1069,19 @@ class MainActivity : Activity() {
         val gg = (g * factor).toInt().coerceIn(0, 255)
         val bb = (b * factor).toInt().coerceIn(0, 255)
 
-        pendingPacket = byteArrayOf(
-            0x7E, 0x07, 0x05, 0x03,
-            rr.toByte(), gg.toByte(), bb.toByte(),
-            0x10, 0xEF.toByte()
-        )
+        pendingPacket = if (isMelkDevice) {
+            byteArrayOf(
+                0x7E, 0x00, 0x05, 0x03,
+                rr.toByte(), gg.toByte(), bb.toByte(),
+                0x00, 0xEF.toByte()
+            )
+        } else {
+            byteArrayOf(
+                0x7E, 0x07, 0x05, 0x03,
+                rr.toByte(), gg.toByte(), bb.toByte(),
+                0x10, 0xEF.toByte()
+            )
+        }
 
         if (!writeScheduled) {
             writeScheduled = true
