@@ -751,7 +751,7 @@ class MainActivity : Activity() {
                 session.stripOn = false
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
                 runOnUiThread {
-                    if (session.address == selectedDeviceAddress.uppercase()) activateSelectedSession()
+                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
                     else {
                         status.text = "Підключено один контролер · шукаю другий..."
                         deviceAdapter?.notifyDataSetChanged()
@@ -886,7 +886,7 @@ class MainActivity : Activity() {
         val on=when(packet[3].toInt() and 255){0xF0,0xFF->true;0x00->false;else->return}
         session.stripOn=on;session.stripStateKnown=true
         if(!on) stopActiveEffect(session)
-        runOnUiThread { if(session.address==selectedDeviceAddress.uppercase()) activateSelectedSession() }
+        runOnUiThread { if(selectedDeviceAddresses.contains(session.address)) activateSelectedSession() }
     }
 
     private fun sendPowerCommand(session: DeviceSession,on:Boolean) {
