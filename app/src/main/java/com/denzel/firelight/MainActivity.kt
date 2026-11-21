@@ -117,7 +117,6 @@ class MainActivity : Activity() {
         }
     }
     // A named callback lets power-off cancel every queued RGB flush reliably.
-    private val colorFlushTask = Runnable { flushPendingColor() }
 
     private fun resetFireMotion(session: DeviceSession) {
         session.level=.76f; session.targetLevel=.76f; session.hueShift=0f; session.targetHue=0f
@@ -298,63 +297,64 @@ class MainActivity : Activity() {
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
         addGap(connectionCard, 8)
-        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, deviceNames) {
-            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View =
-                (convertView as? TextView ?: TextView(this@MainActivity)).apply {
-                    text = "${deviceNames[position]} · ${selectedDeviceAddresses.size} обрано"
-                    textSize=14f; gravity=android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(Color.WHITE); setPadding(dp(12),0,dp(34),0); includeFontPadding=false
-                }
-            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, deviceNames) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View = makeDeviceRow(position)
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View = makeDeviceRow(position)
+            private fun makeDeviceRow(position: Int): View {
                 val address=if(position==0) targetAddress else melkAddress
-                val row=LinearLayout(this@MainActivity).apply {
-                    orientation=LinearLayout.HORIZONTAL; gravity=android.view.Gravity.CENTER_VERTICAL
-                    setPadding(dp(16),0,dp(16),0); minimumHeight=dp(52)
+                return LinearLayout(this@MainActivity).apply {
+                    orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(16),0,dp(16),0);minimumHeight=dp(54)
+                    addView(TextView(this@MainActivity).apply {
+                        text=deviceNames[position];textSize=14f;setTextColor(Color.rgb(220,226,238))
+                        gravity=android.view.Gravity.CENTER_VERTICAL
+                    },LinearLayout.LayoutParams(0,-1,1f))
+                    addView(TextView(this@MainActivity).apply {
+                        text=if(selectedDeviceAddresses.contains(address.uppercase())) "✓" else ""
+                        textSize=22f;typeface=android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(Color.rgb(255,142,105));gravity=android.view.Gravity.CENTER
+                    },LinearLayout.LayoutParams(dp(30),-1))
                     setBackgroundColor(Color.TRANSPARENT)
                 }
-                row.addView(TextView(this@MainActivity).apply {
-                    text=deviceNames[position]; textSize=14f
-                    setTextColor(Color.rgb(220,226,238)); gravity=android.view.Gravity.CENTER_VERTICAL
-                },LinearLayout.LayoutParams(0,-1,1f))
-                row.addView(TextView(this@MainActivity).apply {
-                    text=if(selectedDeviceAddresses.contains(address.uppercase())) "✓" else ""
-                    textSize=22f; typeface=android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(Color.rgb(255,142,105)); gravity=android.view.Gravity.CENTER
-                },LinearLayout.LayoutParams(dp(30),-1))
-                row.setOnLongClickListener {
-                    selectedDeviceAddresses.clear(); selectedDeviceAddresses.add(address.uppercase())
-                    selectedDeviceAddress=address.uppercase()
-                    activateSelectedSession(); deviceAdapter?.notifyDataSetChanged(); true
-                }
-                return row
             }
         }
-        val deviceSpinner = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
-            adapter=deviceAdapter; setSelection(0)
-            onItemSelectedListener=object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    val address=(if(position==0) targetAddress else melkAddress).uppercase()
-                    if(suppressFirstDeviceSelection) suppressFirstDeviceSelection=false
-                    else {
+        val deviceField = TextView(this).apply {
+            text="Пристрої · ${selectedDeviceAddresses.size} обрано"
+            textSize=14f;setTextColor(Color.WHITE);gravity=android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(12),0,dp(12),0);setBackground(rounded(Color.rgb(29,34,46),13,Color.rgb(61,70,88)))
+            minHeight=dp(42)
+            setOnClickListener {
+                val list=ListView(this@MainActivity).apply {
+                    adapter=deviceAdapter
+                    dividerHeight=dp(1)
+                    setOnItemClickListener { _,_,position,_ ->
+                        val address=(if(position==0) targetAddress else melkAddress).uppercase()
                         if(!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
                         if(selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
+                        selectedDeviceAddress=address
+                        activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
+                        this@apply.text="Пристрої · ${selectedDeviceAddresses.size} обрано"
                     }
-                    selectedDeviceAddress=address
-                    activateSelectedSession(); deviceAdapter?.notifyDataSetChanged()
+                    setOnItemLongClickListener { _,_,position,_ ->
+                        val address=(if(position==0) targetAddress else melkAddress).uppercase()
+                        selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
+                        selectedDeviceAddress=address
+                        activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
+                        this@apply.text="Пристрої · 1 обрано"
+                        true
+                    }
                 }
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                val dialog=android.app.AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Оберіть пристрої").setView(list)
+                    .setNegativeButton("Готово",null).create()
+                dialog.show()
+                list.setOnItemLongClickListener { _,_,position,_ ->
+                    val address=(if(position==0) targetAddress else melkAddress).uppercase()
+                    selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
+                    selectedDeviceAddress=address;activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
+                    this@apply.text="Пристрої · 1 обрано";dialog.dismiss();true
+                }
             }
-            setBackground(rounded(Color.rgb(29,34,46),13,Color.rgb(61,70,88)))
-            setPadding(0,0,dp(28),0); dropDownWidth=resources.displayMetrics.widthPixels-dp(48)
-            dropDownHorizontalOffset=0; dropDownVerticalOffset=dp(42)
-            setPopupBackgroundDrawable(rounded(Color.rgb(17,21,30),16,Color.rgb(61,70,88)))
-        }
-        val deviceField = FrameLayout(this).apply {
-            addView(deviceSpinner,FrameLayout.LayoutParams(-1,dp(38)))
-            addView(object:View(this@MainActivity){
-                private val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(190,199,215);style=Paint.Style.STROKE;strokeWidth=dp(2).toFloat();strokeCap=Paint.Cap.ROUND}
-                override fun onDraw(canvas:Canvas){val x=width/2f;val y=height/2f;val h=dp(5).toFloat();canvas.drawLine(x-h,y-dp(2),x,y+dp(3),p);canvas.drawLine(x,y+dp(3),x+h,y-dp(2),p)}
-            },FrameLayout.LayoutParams(dp(36),-1,android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
         addGap(connectionCard, 8)
