@@ -605,8 +605,6 @@ class MainActivity : Activity() {
                 2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
                 3 -> {
                     pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
-                    fillSpeedCard.visibility = if (selectedSceneIndex == 0) View.VISIBLE else View.GONE
-                    applySceneColor(selectedSceneIndex)
                 }
             }
             navItems.forEachIndexed { i, item ->
