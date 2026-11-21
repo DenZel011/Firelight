@@ -412,7 +412,8 @@ class MainActivity : Activity() {
             green = Color.green(selectedColor)
             blue = Color.blue(selectedColor)
             updatePreview()
-            selectedSessions().forEach { it.red=red; it.green=green; it.blue=blue }; if (selectedSessions().all { it.mode == EffectMode.NONE }) sendCurrentColor()
+            selectedSessions().forEach { it.red=red; it.green=green; it.blue=blue }
+            selectedSessions().filter { it.mode == EffectMode.NONE }.forEach { sendRGBTo(it,red,green,blue) }
         }
         val wheelSize = dp(168)
         wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
@@ -450,7 +451,8 @@ class MainActivity : Activity() {
 
         addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
             brightness = it
-            selectedSessions().forEach { it.brightness=brightness }; if (selectedSessions().all { it.mode == EffectMode.NONE }) sendCurrentColor()
+            selectedSessions().forEach { it.brightness=brightness }
+            selectedSessions().filter { it.mode == EffectMode.NONE }.forEach { sendRGBTo(it,it.red,it.green,it.blue) }
         }
         root.addView(colorCard)
         addGap(root, 12)
@@ -704,7 +706,7 @@ class MainActivity : Activity() {
         gatt=d?.gatt; characteristic=d?.characteristic; notifyCharacteristic=d?.notifyCharacteristic
         connected=d?.connected==true; isMelkDevice=d?.isMelk==true
         deviceLayout=if(isMelkDevice) DeviceLayout.SEQUENTIAL else DeviceLayout.SIMULTANEOUS
-        if(d!=null){red=d.red;green=d.green;blue=d.blue;brightness=d.brightness;speed=d.speed;fireColorSpread=d.spread;rainbowSpeed=d.rainbowSpeed}
+        if(d!=null){red=d.red;green=d.green;blue=d.blue;brightness=d.brightness;speed=d.speed;fireColorSpread=d.spread;rainbowSpeed=d.rainbowSpeed;if(::preview.isInitialized)updatePreview()}
         val chosen=selectedSessions()
         val powerStates=chosen.map{if(it.stripStateKnown) it.stripOn else null}.distinct()
         bulbButton.setLit(if(chosen.isEmpty() || powerStates.size!=1) null else powerStates.first())
