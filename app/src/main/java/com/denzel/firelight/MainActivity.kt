@@ -61,9 +61,12 @@ class MainActivity : Activity() {
     private var rainbowLastTickAt = 0L
     private lateinit var rainbowButton: Button
     private var scanning = false
-    private var deviceAdapter: ArrayAdapter<String>? = null
-    private lateinit var deviceField: Spinner
-    private var updatingDevicePicker = false
+    private lateinit var deviceField: TextView
+    private var devicePopup: PopupWindow? = null
+    private var refreshDevicePopup: (() -> Unit)? = null
+    private var screenRoot: FrameLayout? = null
+    private var drawerOverlay: FrameLayout? = null
+    private var drawerPanel: LinearLayout? = null
     private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
     private var selectedDeviceAddress = "BE:27:8A:00:73:DE"
 
@@ -110,7 +113,7 @@ class MainActivity : Activity() {
             val found = sessions.values.count { it.gatt != null }
             status.text = if (found > 0) "Підключено $found із 2 контролерів"
                 else "Контролери не знайдено. Перевір, що пристрої увімкнені."
-            deviceAdapter?.notifyDataSetChanged()
+            refreshDevicePicker()
         }
     }
     private val powerStateTimeout = Runnable {
@@ -305,70 +308,13 @@ class MainActivity : Activity() {
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
         addGap(connectionCard, 8)
-        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, deviceNames) {
-            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                return TextView(this@MainActivity).apply {
-                    text = "Пристрої · ${selectedDeviceAddresses.size} обрано"
-                    textSize = 14f
-                    setTextColor(Color.WHITE)
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(dp(12), 0, dp(12), 0)
-                    minHeight = dp(42)
-                }
-            }
-            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                val address = if (position == 0) targetAddress else melkAddress
-                val selected = selectedDeviceAddresses.contains(address.uppercase())
-                return LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(dp(16), 0, dp(14), 0)
-                    minimumHeight = dp(52)
-                    setBackgroundColor(Color.TRANSPARENT)
-                    isLongClickable = true
-                    setOnLongClickListener {
-                        selectedDeviceAddresses.clear()
-                        selectedDeviceAddresses.add(address.uppercase())
-                        selectedDeviceAddress = address.uppercase()
-                        activateSelectedSession()
-                        true
-                    }
-                    addView(TextView(this@MainActivity).apply {
-                        text = deviceDisplayName(address)
-                        textSize = 14f
-                        setTextColor(Color.rgb(226, 231, 241))
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                    }, LinearLayout.LayoutParams(0, -1, 1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text = if (selected) "✓" else ""
-                        textSize = 15f
-                        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-                        setTextColor(Color.rgb(255, 142, 105))
-                        gravity = android.view.Gravity.CENTER
-                        setBackground(if (selected) rounded(Color.rgb(75, 48, 45), 10) else rounded(Color.TRANSPARENT, 10))
-                    }, LinearLayout.LayoutParams(dp(28), dp(28)))
-                }
-            }
-        }
-        deviceField = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
-            adapter = deviceAdapter
-            setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 1 else 0)
+        deviceField = TextView(this).apply {
+            text = "Пристрої · ${selectedDeviceAddresses.size} обрано  ▾"
+            textSize = 14f; setTextColor(Color.WHITE); gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(16), 0, dp(12), 0); minHeight = dp(42)
             setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
-            setPadding(dp(4), 0, dp(8), 0)
-            dropDownWidth = -1
-            dropDownVerticalOffset = dp(3)
-            setPopupBackgroundDrawable(rounded(Color.rgb(27, 32, 43), 14, Color.rgb(61, 70, 88)))
-            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (updatingDevicePicker) return
-                    val address = (if (position == 0) targetAddress else melkAddress).uppercase()
-                    if (!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
-                    if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
-                    selectedDeviceAddress = if (selectedDeviceAddresses.contains(address)) address else selectedDeviceAddresses.first()
-                    activateSelectedSession()
-                }
-            }
+            isClickable = true; isFocusable = true
+            setOnClickListener { showDevicePicker() }
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(42)))
         addGap(connectionCard, 8)
@@ -568,7 +514,8 @@ class MainActivity : Activity() {
         })
         selectTab(0)
 
-        setContentView(root)
+        screenRoot = FrameLayout(this).apply { addView(root, FrameLayout.LayoutParams(-1, -1)) }
+        setContentView(screenRoot)
     }
 
     private fun deviceDisplayName(address: String): String {
@@ -577,17 +524,138 @@ class MainActivity : Activity() {
             .getString(address.uppercase(), fallback)?.takeIf { it.isNotBlank() } ?: fallback
     }
 
+    private fun showDevicePicker() {
+        if (!::deviceField.isInitialized) return
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val rows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(4))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(27, 32, 43)); cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(61, 70, 88))
+            }
+        }
+        val checks = linkedMapOf<String, TextView>(); val labels = linkedMapOf<String, TextView>()
+        val addresses = listOf(targetAddress.uppercase(), melkAddress.uppercase())
+        fun refreshRows() {
+            addresses.forEach { a ->
+                checks[a]?.apply {
+                    text = if (selectedDeviceAddresses.contains(a)) "✓" else ""
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(if (selectedDeviceAddresses.contains(a)) Color.rgb(75, 48, 45) else Color.TRANSPARENT)
+                        cornerRadius = dp(10).toFloat()
+                    }
+                }
+                labels[a]?.text = deviceDisplayName(a)
+            }
+            deviceField.text = "Пристрої · ${selectedDeviceAddresses.size} обрано  ▾"
+        }
+        addresses.forEach { a ->
+            val check = TextView(this).apply {
+                textSize = 15f; typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
+            }
+            val label = TextView(this).apply {
+                text = deviceDisplayName(a); textSize = 14f
+                setTextColor(Color.rgb(226, 231, 241)); gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(16), 0, dp(14), 0); minimumHeight = dp(52)
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    if (!selectedDeviceAddresses.add(a)) {
+                        selectedDeviceAddresses.remove(a)
+                        if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(a)
+                        if (selectedDeviceAddress.equals(a, true)) selectedDeviceAddress = selectedDeviceAddresses.first()
+                    } else selectedDeviceAddress = a
+                    activateSelectedSession(); refreshRows()
+                }
+                setOnLongClickListener {
+                    selectedDeviceAddresses.clear(); selectedDeviceAddresses.add(a); selectedDeviceAddress = a
+                    activateSelectedSession(); devicePopup?.dismiss(); true
+                }
+                addView(label, LinearLayout.LayoutParams(0, -1, 1f)); addView(check, LinearLayout.LayoutParams(dp(28), dp(28)))
+            }
+            labels[a] = label; checks[a] = check; rows.addView(row, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        refreshDevicePopup = { refreshRows() }; refreshRows()
+        val popup = PopupWindow(rows, deviceField.width.coerceAtLeast(dp(220)), -2, true).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true; elevation = dp(12).toFloat()
+            setOnDismissListener { if (devicePopup === this) devicePopup = null }
+        }
+        devicePopup?.dismiss(); devicePopup = popup
+        deviceField.post { if (deviceField.isAttachedToWindow && devicePopup === popup) popup.showAsDropDown(deviceField, 0, dp(4)) }
+    }
+
+    private fun refreshDevicePicker() {
+        if (::deviceField.isInitialized) {
+            deviceField.text = "Пристрої · ${selectedDeviceAddresses.size} обрано  ▾"
+            refreshDevicePopup?.invoke()
+        }
+    }
+
     private fun showAppMenu(anchor: View) {
-        val menu = android.widget.PopupMenu(this, anchor)
-        menu.menu.add("Перейменувати девайси").setOnMenuItemClickListener {
-            showRenameDevicesDialog()
-            true
+        val host = screenRoot ?: return
+        if (drawerOverlay != null) return
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val width = (resources.displayMetrics.widthPixels * .75f).toInt()
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(166, 0, 0, 0)); alpha = 0f; setOnClickListener { closeAppMenu() }
         }
-        menu.menu.add("Вимкнути все").setOnMenuItemClickListener {
-            turnOffAllConnectedDevices()
-            true
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(54), dp(18), dp(24))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(22, 26, 36))
+                cornerRadii = floatArrayOf(dp(22).toFloat(), dp(22).toFloat(), 0f, 0f, 0f, 0f, dp(22).toFloat(), dp(22).toFloat())
+                setStroke(dp(1), Color.rgb(39, 45, 59))
+            }
+            isClickable = true; isFocusable = true; setOnClickListener { }
         }
-        menu.show()
+        overlay.addView(panel, FrameLayout.LayoutParams(width, -1, android.view.Gravity.RIGHT or android.view.Gravity.TOP))
+        panel.addView(TextView(this).apply {
+            text = "МЕНЮ"; textSize = 12f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            setTextColor(Color.rgb(151, 160, 178)); letterSpacing = .12f
+        }, LinearLayout.LayoutParams(-1, dp(34)))
+        fun item(title: String, symbol: String, action: () -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(15), 0, dp(14), 0)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(37, 43, 57)); cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), Color.rgb(55, 63, 80))
+                }
+                isClickable = true; isFocusable = true; setOnClickListener { closeAppMenu(); action() }
+            }
+            row.addView(TextView(this).apply {
+                text = symbol; textSize = 19f; setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(34), -1))
+            row.addView(TextView(this).apply {
+                text = title; textSize = 15f; setTextColor(Color.rgb(222, 228, 239)); gravity = android.view.Gravity.CENTER_VERTICAL
+            }, LinearLayout.LayoutParams(0, -1, 1f))
+            panel.addView(row, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
+        }
+        item("Перейменувати девайси", "✎") { showRenameDevicesDialog() }
+        item("Вимкнути все", "⏻") { turnOffAllConnectedDevices() }
+        host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        drawerOverlay = overlay; drawerPanel = panel
+        overlay.animate().alpha(1f).setDuration(180L).start()
+        panel.translationX = width.toFloat(); panel.animate().translationX(0f).setDuration(230L).start()
+    }
+
+    private fun closeAppMenu() {
+        val overlay = drawerOverlay ?: return; val panel = drawerPanel
+        val width = panel?.width?.takeIf { it > 0 } ?: (resources.displayMetrics.widthPixels * .75f).toInt()
+        overlay.animate().alpha(0f).setDuration(170L).start()
+        panel?.animate()?.translationX(width.toFloat())?.setDuration(190L)?.withEndAction {
+            (overlay.parent as? android.view.ViewGroup)?.removeView(overlay)
+            if (drawerOverlay === overlay) { drawerOverlay = null; drawerPanel = null }
+        }?.start() ?: run {
+            (overlay.parent as? android.view.ViewGroup)?.removeView(overlay); drawerOverlay = null; drawerPanel = null
+        }
     }
 
     private fun showRenameDevicesDialog() {
@@ -642,7 +710,7 @@ class MainActivity : Activity() {
                     if (value.isNotEmpty()) prefs.putString(address, value)
                 }
                 prefs.apply()
-                deviceAdapter?.notifyDataSetChanged()
+                refreshDevicePicker()
                 dialog.dismiss()
             }
         }
@@ -840,12 +908,8 @@ class MainActivity : Activity() {
             one.stripOn->"Підключено · стрічка увімкнена"
             else->"Підключено · стрічка вимкнена"
         }
-        deviceAdapter?.notifyDataSetChanged()
-        if (::deviceField.isInitialized) {
-            updatingDevicePicker = true
-            deviceField.setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 0 else 1)
-            updatingDevicePicker = false
-        }
+        refreshDevicePicker()
+        refreshDevicePicker()
     }
 
     private fun connect(device: BluetoothDevice) {
@@ -859,7 +923,7 @@ class MainActivity : Activity() {
         }
         try {
             session.gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-            deviceAdapter?.notifyDataSetChanged()
+            refreshDevicePicker()
         } catch (_: SecurityException) {
             if (address == selectedDeviceAddress.uppercase()) status.text = "Помилка дозволу Bluetooth"
         }
@@ -880,7 +944,7 @@ class MainActivity : Activity() {
                     if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
                     else {
                         status.text = "Підключено один контролер · шукаю другий..."
-                        deviceAdapter?.notifyDataSetChanged()
+                        refreshDevicePicker()
                     }
                 }
                 try { g.discoverServices() } catch (_: SecurityException) {}
@@ -895,7 +959,7 @@ class MainActivity : Activity() {
                 session.gatt = null
                 runOnUiThread {
                     if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
-                    deviceAdapter?.notifyDataSetChanged()
+                    refreshDevicePicker()
                 }
             }
         }
@@ -959,7 +1023,7 @@ class MainActivity : Activity() {
                             handler.postDelayed(powerStateTimeout, 1800L)
                         }
                     }
-                    deviceAdapter?.notifyDataSetChanged()
+                    refreshDevicePicker()
                 } else if (session.address == selectedDeviceAddress.uppercase()) {
                     status.text = "Не знайдено FFF0 / FFF3"
                 }
@@ -1142,7 +1206,7 @@ class MainActivity : Activity() {
     private fun disconnect() {
         stopScan();closeGattConnection();sessions.clear();selectedDeviceAddresses.clear()
         selectedDeviceAddresses.add(targetAddress.uppercase());selectedDeviceAddress=targetAddress.uppercase()
-        status.text="Статус: не підключено";deviceAdapter?.notifyDataSetChanged();bulbButton.setLit(null)
+        status.text="Статус: не підключено";refreshDevicePicker();bulbButton.setLit(null)
         fireButton.text="Увімкнути вогонь";rainbowButton.text="Увімкнути веселку"
     }
 
