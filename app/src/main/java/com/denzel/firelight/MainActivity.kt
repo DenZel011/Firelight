@@ -47,6 +47,11 @@ class MainActivity : Activity() {
         var flushRunner: Runnable? = null
     )
     private val sessions = linkedMapOf<String, DeviceSession>()
+    private val managedDeviceAddresses = linkedSetOf<String>()
+    private data class DiscoveredBle(val device: BluetoothDevice, val name: String, var rssi: Int)
+    private val discoveredDevices = linkedMapOf<String, DiscoveredBle>()
+    private var discoverAllScanning = false
+    private var refreshDiscoveryDialog: (() -> Unit)? = null
     private val selectedDeviceAddresses = linkedSetOf("BE:27:8A:00:73:DE")
     private var suppressFirstDeviceSelection = true
 
@@ -110,10 +115,11 @@ class MainActivity : Activity() {
     private val scanTimeout = Runnable {
         if (scanning) {
             stopScan()
-            val found = sessions.values.count { it.gatt != null }
-            status.text = if (found > 0) "Підключено $found із 2 контролерів"
-                else "Контролери не знайдено. Перевір, що пристрої увімкнені."
+            val found = discoveredDevices.size
+            status.text = if (discoverAllScanning) "Знайдено BLE-пристроїв: $found"
+                else if (found > 0) "Знайдено пристроїв: $found" else "Додані пристрої не знайдено"
             refreshDevicePicker()
+            refreshDiscoveryDialog?.invoke()
         }
     }
     private val powerStateTimeout = Runnable {
@@ -217,6 +223,16 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createInterface()
+        managedDeviceAddresses.add(targetAddress.uppercase())
+        managedDeviceAddresses.add(melkAddress.uppercase())
+        getSharedPreferences("firelight_devices", MODE_PRIVATE).getStringSet("addresses", null)?.let { saved ->
+            managedDeviceAddresses.clear()
+            managedDeviceAddresses.addAll(saved.map { it.uppercase() })
+            if (managedDeviceAddresses.isEmpty()) managedDeviceAddresses.add(targetAddress.uppercase())
+        }
+        selectedDeviceAddresses.retainAll(managedDeviceAddresses)
+        if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(managedDeviceAddresses.first())
+        selectedDeviceAddress = selectedDeviceAddresses.first()
         requestBluetoothPermissions()
         stripStateKnown = false
         stripOn = false
@@ -519,7 +535,11 @@ class MainActivity : Activity() {
     }
 
     private fun deviceDisplayName(address: String): String {
-        val fallback = if (address.equals(melkAddress, true)) deviceNames[1] else deviceNames[0]
+        val fallback = when {
+            address.equals(melkAddress, true) -> deviceNames[1]
+            address.equals(targetAddress, true) -> deviceNames[0]
+            else -> discoveredDevices[address.uppercase()]?.name?.takeIf { it.isNotBlank() } ?: "BLE-пристрій"
+        }
         return getSharedPreferences("firelight_device_names", MODE_PRIVATE)
             .getString(address.uppercase(), fallback)?.takeIf { it.isNotBlank() } ?: fallback
     }
@@ -536,7 +556,7 @@ class MainActivity : Activity() {
             }
         }
         val checks = linkedMapOf<String, TextView>(); val labels = linkedMapOf<String, TextView>()
-        val addresses = listOf(targetAddress.uppercase(), melkAddress.uppercase())
+        val addresses = managedDeviceAddresses.toList()
         fun refreshRows() {
             addresses.forEach { a ->
                 checks[a]?.apply {
@@ -616,10 +636,11 @@ class MainActivity : Activity() {
         }
         overlay.addView(panel, FrameLayout.LayoutParams(width, -1, android.view.Gravity.RIGHT or android.view.Gravity.TOP))
         panel.addView(TextView(this).apply {
-            text = "МЕНЮ"; textSize = 12f
+            text = "МЕНЮ"; textSize = 18f
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-            setTextColor(Color.rgb(151, 160, 178)); letterSpacing = .12f
-        }, LinearLayout.LayoutParams(-1, dp(34)))
+            setTextColor(Color.rgb(226, 231, 241)); letterSpacing = .14f
+            gravity = android.view.Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, dp(42)))
         fun item(title: String, symbol: String, action: () -> Unit) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
@@ -630,16 +651,22 @@ class MainActivity : Activity() {
                 }
                 isClickable = true; isFocusable = true; setOnClickListener { closeAppMenu(); action() }
             }
+            if (symbol == "power") {
+                row.addView(PowerMenuGlyph(this), LinearLayout.LayoutParams(dp(34), dp(34)))
+            } else {
+                row.addView(TextView(this).apply {
+                    text = symbol; textSize = 21f; setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
+                }, LinearLayout.LayoutParams(dp(34), -1))
+            }
             row.addView(TextView(this).apply {
-                text = symbol; textSize = 19f; setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
-            }, LinearLayout.LayoutParams(dp(34), -1))
-            row.addView(TextView(this).apply {
-                text = title; textSize = 15f; setTextColor(Color.rgb(222, 228, 239)); gravity = android.view.Gravity.CENTER_VERTICAL
+                text = title; textSize = 16f; setTextColor(Color.rgb(222, 228, 239)); gravity = android.view.Gravity.CENTER_VERTICAL
             }, LinearLayout.LayoutParams(0, -1, 1f))
             panel.addView(row, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
         }
         item("Перейменувати девайси", "✎") { showRenameDevicesDialog() }
-        item("Вимкнути все", "⏻") { turnOffAllConnectedDevices() }
+        item("Підключення пристроїв", "⌕") { showDeviceManagementDialog() }
+        panel.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+        item("Вимкнути все", "power") { turnOffAllConnectedDevices() }
         host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         drawerOverlay = overlay; drawerPanel = panel
         overlay.animate().alpha(1f).setDuration(180L).start()
@@ -655,6 +682,147 @@ class MainActivity : Activity() {
             if (drawerOverlay === overlay) { drawerOverlay = null; drawerPanel = null }
         }?.start() ?: run {
             (overlay.parent as? android.view.ViewGroup)?.removeView(overlay); drawerOverlay = null; drawerPanel = null
+        }
+    }
+
+    private fun saveManagedDevices() {
+        getSharedPreferences("firelight_devices", MODE_PRIVATE).edit()
+            .putStringSet("addresses", managedDeviceAddresses.toSet()).apply()
+    }
+
+    private fun showDeviceManagementDialog() {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        val hint = TextView(this).apply {
+            text = "Знайдені Bluetooth-пристрої поблизу"
+            textSize = 13f; setTextColor(Color.rgb(151, 160, 178))
+        }
+        content.addView(hint, LinearLayout.LayoutParams(-1, dp(34)))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply { isFillViewport = true; addView(list) }
+        content.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val search = Button(this).apply {
+            text = "Шукати пристрої"
+            setOnClickListener {
+                discoveredDevices.clear()
+                hint.text = "Сканування... Знайдені пристрої з'являться нижче"
+                startScan(true)
+            }
+        }
+        val stop = Button(this).apply {
+            text = "Зупинити"
+            setOnClickListener { stopScan(); hint.text = "Сканування зупинено" }
+        }
+        actions.addView(search, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(6) })
+        actions.addView(stop, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(6) })
+        content.addView(actions)
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Підключення пристроїв")
+            .setView(content)
+            .setNegativeButton("Закрити", null)
+            .create()
+
+        fun refreshRows() {
+            list.removeAllViews()
+            if (discoveredDevices.isEmpty()) {
+                list.addView(TextView(this).apply {
+                    text = if (scanning) "Пошук пристроїв..." else "Поки нічого не знайдено. Натисни «Шукати пристрої»."
+                    textSize = 14f; setTextColor(Color.rgb(183, 191, 207)); gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(24), 0, dp(24))
+                })
+            }
+            discoveredDevices.values.sortedBy { it.name.lowercase() }.forEach { found ->
+                val address = found.device.address.uppercase()
+                val added = managedDeviceAddresses.contains(address)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(10), dp(8), dp(8), dp(8))
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.rgb(29, 34, 46)); cornerRadius = dp(12).toFloat()
+                    }
+                }
+                val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                info.addView(TextView(this).apply {
+                    text = found.name; textSize = 14f
+                    setTextColor(Color.rgb(226, 231, 241)); maxLines = 1
+                })
+                info.addView(TextView(this).apply {
+                    text = "$address  ·  RSSI ${found.rssi} dBm"
+                    textSize = 10f; setTextColor(Color.rgb(139, 149, 168)); maxLines = 1
+                })
+                row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+                val toggle = TextView(this).apply {
+                    text = if (added) "Додано ✓" else "Додати +"
+                    textSize = 12f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (added) Color.rgb(255, 142, 105) else Color.rgb(130, 210, 164))
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    setOnClickListener {
+                        if (managedDeviceAddresses.contains(address)) {
+                            managedDeviceAddresses.remove(address)
+                            selectedDeviceAddresses.remove(address)
+                            if (selectedDeviceAddress.equals(address, true)) {
+                                selectedDeviceAddress = selectedDeviceAddresses.firstOrNull() ?: managedDeviceAddresses.firstOrNull().orEmpty()
+                            }
+                            sessions.remove(address)?.let { session ->
+                                stopActiveEffect(session)
+                                try { session.gatt?.disconnect(); session.gatt?.close() } catch (_: Exception) {}
+                            }
+                            if (selectedDeviceAddresses.isEmpty() && managedDeviceAddresses.isNotEmpty()) {
+                                selectedDeviceAddresses.add(managedDeviceAddresses.first())
+                                selectedDeviceAddress = managedDeviceAddresses.first()
+                            }
+                            activateSelectedSession()
+                        } else {
+                            managedDeviceAddresses.add(address)
+                            selectedDeviceAddresses.add(address)
+                            selectedDeviceAddress = address
+                            saveManagedDevices()
+                            connect(found.device)
+                        }
+                        saveManagedDevices()
+                        refreshDevicePicker()
+                        refreshRows()
+                    }
+                }
+                row.addView(toggle, LinearLayout.LayoutParams(dp(92), dp(42)))
+                list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
+            }
+        }
+        refreshDiscoveryDialog = { refreshRows() }
+        dialog.setOnDismissListener {
+            refreshDiscoveryDialog = null
+            if (scanning && discoverAllScanning) stopScan()
+        }
+        dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * .92f).toInt(), dp(520))
+        refreshRows()
+        discoveredDevices.clear()
+        hint.text = "Сканування почнеться автоматично. За потреби можна запустити знову."
+        startScan(true)
+    }
+
+    private class PowerMenuGlyph(context: Context) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(255, 142, 105)
+            style = Paint.Style.STROKE
+            strokeWidth = resources.displayMetrics.density * 2.2f
+            strokeCap = Paint.Cap.ROUND
+        }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val cx = width / 2f
+            val cy = height / 2f
+            val r = minOf(width, height) * .31f
+            canvas.drawArc(cx-r, cy-r, cx+r, cy+r, 135f, 270f, false, paint)
+            canvas.drawLine(cx, cy-r*1.42f, cx, cy+r*.08f, paint)
         }
     }
 
@@ -798,7 +966,7 @@ class MainActivity : Activity() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun startScan() {
+    private fun startScan(discoverAll: Boolean = false) {
         if (!hasBluetoothPermissions()) {
             requestBluetoothPermissions()
             Toast.makeText(this, "Надай дозволи Bluetooth", Toast.LENGTH_SHORT).show()
@@ -810,24 +978,25 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Увімкни Bluetooth", Toast.LENGTH_SHORT).show()
             return
         }
-        val missingAddresses = listOf(targetAddress, melkAddress).filter { address ->
+        val missingAddresses = managedDeviceAddresses.filter { address ->
             sessions[address.uppercase()]?.gatt == null
         }
-        if (missingAddresses.isEmpty()) {
-            status.text = "Обидва контролери вже підключені"
+        if (!discoverAll && missingAddresses.isEmpty()) {
+            status.text = "Усі додані пристрої вже підключені"
             return
         }
         stopScan()
+        discoverAllScanning = discoverAll
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
         if (activeScanner == null) {
             status.text = "BLE-сканер недоступний"
             return
         }
-        status.text = "Шукаю обидва контролери..."
+        status.text = if (discoverAll) "Шукаю BLE-пристрої поблизу..." else "Шукаю додані пристрої..."
         scanning = true
         try {
-            val filters = missingAddresses.map { address ->
+            val filters = if (discoverAll) emptyList() else missingAddresses.map { address ->
                 ScanFilter.Builder().setDeviceAddress(address).build()
             }
             val settings = ScanSettings.Builder()
@@ -848,15 +1017,21 @@ class MainActivity : Activity() {
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val address = try { result.device.address } catch (_: SecurityException) { "" }
-            if (!address.equals(targetAddress, true) && !address.equals(melkAddress, true)) return
-            if (sessions[address.uppercase()]?.gatt != null) return
+            val address = try { result.device.address.uppercase() } catch (_: SecurityException) { "" }
+            if (address.isBlank()) return
+            val isManaged = managedDeviceAddresses.contains(address)
+            if (!discoverAllScanning && !isManaged) return
+            val foundName = try {
+                result.scanRecord?.deviceName?.takeIf { it.isNotBlank() } ?: result.device.name?.takeIf { it.isNotBlank() }
+            } catch (_: SecurityException) { null } ?: if (address == targetAddress.uppercase()) deviceNames[0]
+                else if (address == melkAddress.uppercase()) deviceNames[1] else "BLE-пристрій"
             runOnUiThread {
-                status.text = if (address.equals(melkAddress, true))
-                    "Знайшов MELK-OA21 2C · підключаю..."
-                else "Знайшов ELK-BLEDOB · підключаю..."
-                connect(result.device)
-                if (sessions.values.count { it.gatt != null } >= 2) stopScan()
+                discoveredDevices[address] = DiscoveredBle(result.device, foundName, result.rssi)
+                refreshDiscoveryDialog?.invoke()
+                if (isManaged && sessions[address]?.gatt == null) {
+                    status.text = "Знайшов ${deviceDisplayName(address)} · підключаю..."
+                    connect(result.device)
+                }
             }
         }
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
@@ -873,6 +1048,7 @@ class MainActivity : Activity() {
         if (!scanning) return
         scanning = false
         try { scanner?.stopScan(scanCallback) } catch (_: Exception) {}
+        refreshDiscoveryDialog?.invoke()
     }
 
     private fun classifyDeviceLayout(device: BluetoothDevice): DeviceLayout {
