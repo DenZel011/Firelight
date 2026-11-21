@@ -1283,7 +1283,7 @@ class MainActivity : Activity() {
         ensureRunners(d)
         if(!d.flushQueued) {
             d.flushQueued=true
-            val interval=if(d.isMelk)100L else if(d.mode==EffectMode.RAINBOW)30L else 50L
+            val interval=if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else if(d.mode==EffectMode.RAINBOW)30L else 50L
             handler.postDelayed(d.flushRunner!!,(interval-(SystemClock.uptimeMillis()-d.lastWrite)).coerceAtLeast(0L))
         }
     }
@@ -1293,7 +1293,7 @@ class MainActivity : Activity() {
         val packet=d.pending ?: return;d.pending=null
         val g=d.gatt ?: return;val ch=d.characteristic ?: return
         writeBlePacketTo(g,ch,packet);d.lastWrite=SystemClock.uptimeMillis()
-        if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk)100L else 35L)}
+        if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else 35L)}
     }
 
     private fun sendCurrentColor() { selectedSessions().forEach{sendRGBTo(it,it.red,it.green,it.blue)} }
