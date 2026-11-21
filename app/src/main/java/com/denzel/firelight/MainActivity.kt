@@ -854,12 +854,109 @@ class MainActivity : Activity() {
         }
         item("Перейменувати девайси", "✎") { showRenameDevicesDialog() }
         item("Підключення пристроїв", "⌕") { showDeviceManagementDialog() }
+        item("Тест", "✦") { showLedTestPage() }
         panel.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         item("Вимкнути все", "power") { turnOffAllConnectedDevices() }
         host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         drawerOverlay = overlay; drawerPanel = panel
         overlay.animate().alpha(1f).setDuration(180L).start()
         panel.translationX = width.toFloat(); panel.animate().translationX(0f).setDuration(230L).start()
+    }
+
+    private fun showLedTestPage() {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val dialog = android.app.Dialog(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(18), dp(16), dp(12))
+            setBackgroundColor(Color.rgb(10, 12, 18))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = "ТЕСТ СВІТЛОДІОДІВ"
+            textSize = 18f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        }
+        header.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val close = TextView(this).apply {
+            text = "✕"; textSize = 22f; gravity = android.view.Gravity.CENTER
+            setTextColor(Color.rgb(255, 142, 105)); isClickable = true
+            setOnClickListener { dialog.dismiss() }
+        }
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(48)))
+        page.addView(header)
+        val hint = TextView(this).apply {
+            text = "182 світлодіоди · обери номер для перевірки"
+            textSize = 13f; setTextColor(Color.rgb(151, 160, 178))
+            setPadding(0, dp(2), 0, dp(12))
+        }
+        page.addView(hint)
+        val selected = TextView(this).apply {
+            text = "Не вибрано"
+            textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(255, 190, 130))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(22, 26, 36)); cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.rgb(55, 63, 80))
+            }
+        }
+        page.addView(selected, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        val scroll = ScrollView(this).apply { isFillViewport = true }
+        val grid = android.widget.GridLayout(this).apply {
+            columnCount = 6
+            useDefaultMargins = false
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        }
+        val buttons = ArrayList<TextView>(182)
+        fun styleCell(v: TextView, active: Boolean) {
+            v.setTextColor(if (active) Color.WHITE else Color.rgb(222, 228, 239))
+            v.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(if (active) Color.rgb(173, 76, 52) else Color.rgb(29, 34, 46))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), if (active) Color.rgb(255, 142, 105) else Color.rgb(55, 63, 80))
+            }
+        }
+        for (number in 1..182) {
+            val cell = TextView(this).apply {
+                text = number.toString()
+                textSize = 14f
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    buttons.forEach { styleCell(it, it === this) }
+                    selected.text = "Вибрано LED №$number"
+                    val melk = selectedSessions().any { it.isMelk && it.connected && it.characteristic != null }
+                    if (melk) {
+                        hint.text = "LED №$number вибрано. Адресну BLE-команду ще потрібно реалізувати."
+                    } else {
+                        hint.text = "Підключи MELK-OA21. Адресне керування LED ще не налаштоване."
+                    }
+                }
+            }
+            styleCell(cell, false)
+            val lp = android.widget.GridLayout.LayoutParams().apply {
+                width = 0; height = dp(44)
+                columnSpec = android.widget.GridLayout.spec(number % 6, 1f)
+                setMargins(dp(3), dp(3), dp(3), dp(3))
+            }
+            grid.addView(cell, lp)
+            buttons.add(cell)
+        }
+        scroll.addView(grid)
+        page.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        dialog.setContentView(page)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
+        dialog.window?.setStatusBarColor(Color.rgb(10, 12, 18))
+        dialog.window?.setNavigationBarColor(Color.rgb(10, 12, 18))
     }
 
     private fun closeAppMenu() {
