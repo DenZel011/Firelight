@@ -494,7 +494,8 @@ class MainActivity : Activity() {
 
         val sceneContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
+            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(4), 0, 0)
             isClickable = true
             clipChildren = false
             clipToPadding = false
