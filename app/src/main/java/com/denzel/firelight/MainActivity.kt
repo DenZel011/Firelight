@@ -489,7 +489,20 @@ class MainActivity : Activity() {
             clipChildren = true
             clipToPadding = true
         }
-        sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
+        val sceneHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        sceneHeader.addView(
+            text("СЦЕНИ", 11f, muted, true),
+            LinearLayout.LayoutParams(-2, dp(40))
+        )
+        val sceneModeIcons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneHeader.addView(sceneModeIcons, LinearLayout.LayoutParams(0, dp(40), 1f))
+        sceneCard.addView(sceneHeader)
         addGap(sceneCard, 8)
 
         val sceneContent = LinearLayout(this).apply {
@@ -546,6 +559,27 @@ class MainActivity : Activity() {
                 sceneContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
                 applySceneColor(selectedSceneIndex)
             }.start()
+        }
+
+        // Compact, equally sized tap targets; the group stays centered in the
+        // available header area and can grow when more scenes are added.
+        sceneSymbols.forEachIndexed { index, symbol ->
+            val icon = text(symbol, 21f, Color.WHITE, true).apply {
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                background = null
+                foreground = null
+                setOnClickListener {
+                    if (index != selectedSceneIndex) {
+                        showScene(index, index > selectedSceneIndex)
+                    }
+                }
+            }
+            sceneModeIcons.addView(icon, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                marginStart = dp(1)
+                marginEnd = dp(1)
+            })
         }
 
         var sceneTouchStartX = 0f
