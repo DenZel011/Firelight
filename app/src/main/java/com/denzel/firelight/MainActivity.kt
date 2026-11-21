@@ -568,8 +568,6 @@ class MainActivity : Activity() {
                 gravity = android.view.Gravity.CENTER
                 isClickable = true
                 isFocusable = true
-                background = null
-                foreground = null
                 setOnClickListener {
                     if (index != selectedSceneIndex) {
                         showScene(index, index > selectedSceneIndex)
