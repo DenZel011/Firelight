@@ -719,11 +719,22 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun classifyDeviceLayout(device: BluetoothDevice): DeviceLayout {
+        // ELK-BLEDOB drives every LED with one shared RGB value. The future
+        // sequential panel will be added here as a separate device identity.
+        return if (device.address.equals(targetAddress, ignoreCase = true)) {
+            DeviceLayout.SIMULTANEOUS
+        } else {
+            DeviceLayout.SEQUENTIAL
+        }
+    }
+
     private fun connect(device: BluetoothDevice) {
         status.text = "Підключення..."
 
         try {
             closeGattConnection()
+            deviceLayout = classifyDeviceLayout(device)
             stripStateKnown = false
             stripOn = false
             bulbButton.setLit(null)
