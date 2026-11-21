@@ -62,7 +62,8 @@ class MainActivity : Activity() {
     private lateinit var rainbowButton: Button
     private var scanning = false
     private var deviceAdapter: ArrayAdapter<String>? = null
-    private lateinit var deviceField: TextView
+    private lateinit var deviceField: Spinner
+    private var updatingDevicePicker = false
     private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
     private var selectedDeviceAddress = "BE:27:8A:00:73:DE"
 
@@ -150,8 +151,8 @@ class MainActivity : Activity() {
                 d.level+=(d.targetLevel-d.level)*blend; d.hueShift+=(d.targetHue-d.hueShift)*(blend*.9f)
                 d.saturation+=(d.targetSaturation-d.saturation)*blend; d.flare*=kotlin.math.exp(-elapsed.toFloat()/150f)
                 val raw=(d.level+kotlin.math.sin(now/510.0).toFloat()*.045f+kotlin.math.sin(now/91.0).toFloat()*.035f+d.flare)
-                    .coerceIn(if(d.isMelk).07f else .22f,1f)
-                val value=if(d.isMelk) Math.pow(raw.toDouble(),1.65).toFloat().coerceIn(.025f,1f) else raw
+                    .coerceIn(if(d.isMelk).24f else .22f,1f)
+                val value=if(d.isMelk) Math.pow(raw.toDouble(),1.18).toFloat().coerceIn(.22f,1f) else raw
                 val hsv=FloatArray(3); Color.RGBToHSV(d.red,d.green,d.blue,hsv)
                 val rgb=Color.HSVToColor(floatArrayOf((hsv[0]+d.hueShift+360f)%360f,(hsv[1]*d.saturation).coerceIn(0f,1f),value))
                 sendRGBTo(d,Color.red(rgb),Color.green(rgb),Color.blue(rgb))
@@ -287,68 +288,81 @@ class MainActivity : Activity() {
         addGap(brand, 4)
         brand.addView(text("SMART LIGHT CONTROL", 10f, muted, true))
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        val live = text("●  BLE", 11f, Color.rgb(117, 224, 173), true).apply {
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            setBackground(rounded(Color.rgb(25, 55, 48), 30))
+        val menuButton = TextView(this).apply {
+            text = "☰"
+            textSize = 23f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.rgb(255, 142, 105))
+            setBackground(rounded(Color.rgb(43, 35, 36), 14, Color.rgb(91, 59, 54)))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showAppMenu(this) }
         }
-        header.addView(live)
+        header.addView(menuButton, LinearLayout.LayoutParams(dp(44), dp(42)))
         root.addView(header)
         addGap(root, 8)
 
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
         addGap(connectionCard, 8)
-        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, deviceNames) {
-            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View = makeDeviceRow(position)
-            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View = makeDeviceRow(position)
-            private fun makeDeviceRow(position: Int): View {
-                val address=if(position==0) targetAddress else melkAddress
+        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, deviceNames) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                return TextView(this@MainActivity).apply {
+                    text = "Пристрої · ${selectedDeviceAddresses.size} обрано"
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), 0, dp(12), 0)
+                    minHeight = dp(42)
+                }
+            }
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val address = if (position == 0) targetAddress else melkAddress
+                val selected = selectedDeviceAddresses.contains(address.uppercase())
                 return LinearLayout(this@MainActivity).apply {
-                    orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL
-                    setPadding(dp(16),0,dp(16),0);minimumHeight=dp(54)
-                    addView(TextView(this@MainActivity).apply {
-                        text=deviceNames[position];textSize=14f;setTextColor(Color.rgb(220,226,238))
-                        gravity=android.view.Gravity.CENTER_VERTICAL
-                    },LinearLayout.LayoutParams(0,-1,1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text=if(selectedDeviceAddresses.contains(address.uppercase())) "✓" else ""
-                        textSize=22f;typeface=android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(Color.rgb(255,142,105));gravity=android.view.Gravity.CENTER
-                    },LinearLayout.LayoutParams(dp(30),-1))
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), 0, dp(14), 0)
+                    minimumHeight = dp(52)
                     setBackgroundColor(Color.TRANSPARENT)
+                    addView(TextView(this@MainActivity).apply {
+                        text = deviceDisplayName(address)
+                        textSize = 14f
+                        setTextColor(Color.rgb(226, 231, 241))
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                    }, LinearLayout.LayoutParams(0, -1, 1f))
+                    addView(TextView(this@MainActivity).apply {
+                        text = if (selected) "✓" else ""
+                        textSize = 15f
+                        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                        setTextColor(Color.rgb(255, 142, 105))
+                        gravity = android.view.Gravity.CENTER
+                        setBackground(if (selected) rounded(Color.rgb(75, 48, 45), 10) else rounded(Color.TRANSPARENT, 10))
+                    }, LinearLayout.LayoutParams(dp(28), dp(28)))
                 }
             }
         }
-        deviceField = TextView(this).apply {
-            text="Пристрої · ${selectedDeviceAddresses.size} обрано"
-            textSize=14f;setTextColor(Color.WHITE);gravity=android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(12),0,dp(12),0);setBackground(rounded(Color.rgb(29,34,46),13,Color.rgb(61,70,88)))
-            minHeight=dp(42)
-            setOnClickListener {
-                val list=ListView(this@MainActivity).apply {
-                    adapter=deviceAdapter
-                    dividerHeight=dp(1)
-                    setOnItemClickListener { _,_,position,_ ->
-                        val address=(if(position==0) targetAddress else melkAddress).uppercase()
-                        if(!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
-                        if(selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
-                        selectedDeviceAddress=if(selectedDeviceAddresses.contains(address)) address else selectedDeviceAddresses.first()
-                        activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-                    }
-                }
-                val dialog=android.app.AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Оберіть пристрої").setView(list)
-                    .setNegativeButton("Готово",null).create()
-                dialog.show()
-                list.setOnItemLongClickListener { _,_,position,_ ->
-                    val address=(if(position==0) targetAddress else melkAddress).uppercase()
-                    selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
-                    selectedDeviceAddress=address;activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-                    this@MainActivity.deviceField.text="Пристрої · 1 обрано";dialog.dismiss();true
+        deviceField = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
+            adapter = deviceAdapter
+            setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 1 else 0)
+            setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
+            setPadding(dp(4), 0, dp(8), 0)
+            dropDownWidth = -1
+            dropDownVerticalOffset = dp(3)
+            setPopupBackgroundDrawable(rounded(Color.rgb(27, 32, 43), 14, Color.rgb(61, 70, 88)))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    if (updatingDevicePicker) return
+                    val address = (if (position == 0) targetAddress else melkAddress).uppercase()
+                    if (!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
+                    if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
+                    selectedDeviceAddress = if (selectedDeviceAddresses.contains(address)) address else selectedDeviceAddresses.first()
+                    activateSelectedSession()
                 }
             }
         }
-        connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
+        connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(42)))
         addGap(connectionCard, 8)
         status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
         connectionCard.addView(status)
@@ -549,6 +563,103 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
+    private fun deviceDisplayName(address: String): String {
+        val fallback = if (address.equals(melkAddress, true)) deviceNames[1] else deviceNames[0]
+        return getSharedPreferences("firelight_device_names", MODE_PRIVATE)
+            .getString(address.uppercase(), fallback)?.takeIf { it.isNotBlank() } ?: fallback
+    }
+
+    private fun showAppMenu(anchor: View) {
+        val menu = android.widget.PopupMenu(this, anchor)
+        menu.menu.add("Перейменувати девайси").setOnMenuItemClickListener {
+            showRenameDevicesDialog()
+            true
+        }
+        menu.menu.add("Вимкнути все").setOnMenuItemClickListener {
+            turnOffAllConnectedDevices()
+            true
+        }
+        menu.show()
+    }
+
+    private fun showRenameDevicesDialog() {
+        val connectedDevices = sessions.values.filter { it.connected && it.gatt != null && it.characteristic != null }
+        if (connectedDevices.isEmpty()) {
+            Toast.makeText(this, "Немає підключених пристроїв", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val fields = linkedMapOf<String, EditText>()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(4))
+        }
+        connectedDevices.forEachIndexed { index, device ->
+            val defaultName = if (device.isMelk) deviceNames[1] else deviceNames[0]
+            content.addView(TextView(this).apply {
+                text = defaultName
+                textSize = 12f
+                setTextColor(Color.rgb(151, 160, 178))
+            })
+            val field = EditText(this).apply {
+                setSingleLine(true)
+                textSize = 15f
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.rgb(110, 119, 137))
+                hint = defaultName
+                setText(deviceDisplayName(device.address))
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(29, 34, 46))
+                    cornerRadius = dp(11).toFloat()
+                    setStroke(dp(1), Color.rgb(61, 70, 88))
+                }
+            }
+            content.addView(field, LinearLayout.LayoutParams(-1, dp(46)))
+            fields[device.address.uppercase()] = field
+            if (index != connectedDevices.lastIndex) content.addView(View(this), LinearLayout.LayoutParams(1, dp(12)))
+        }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Перейменувати девайси")
+            .setView(content)
+            .setNegativeButton("Скасувати", null)
+            .setPositiveButton("Зберегти", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val prefs = getSharedPreferences("firelight_device_names", MODE_PRIVATE).edit()
+                fields.forEach { (address, field) ->
+                    val value = field.text.toString().trim()
+                    if (value.isNotEmpty()) prefs.putString(address, value)
+                }
+                prefs.apply()
+                deviceAdapter?.notifyDataSetChanged()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun turnOffAllConnectedDevices() {
+        val targets = sessions.values.filter { it.connected && it.gatt != null && it.characteristic != null }
+        if (targets.isEmpty()) {
+            Toast.makeText(this, "Немає підключених пристроїв", Toast.LENGTH_SHORT).show()
+            return
+        }
+        targets.forEach { device ->
+            stopActiveEffect(device)
+            device.stripOn = false
+            device.stripStateKnown = true
+            device.pending = null
+            device.flushQueued = false
+            device.flushRunner?.let { handler.removeCallbacks(it) }
+            sendPowerCommand(device, false)
+        }
+        activateSelectedSession()
+        Toast.makeText(this, "Усі підключені стрічки вимкнено", Toast.LENGTH_SHORT).show()
+    }
+
     private fun startKeepAliveService() {
         try {
             val intent = android.content.Intent(this, KeepAliveService::class.java)
@@ -722,7 +833,11 @@ class MainActivity : Activity() {
             else->"Підключено · стрічка вимкнена"
         }
         deviceAdapter?.notifyDataSetChanged()
-        if (::deviceField.isInitialized) deviceField.text = "Пристрої · ${selectedDeviceAddresses.size} обрано"
+        if (::deviceField.isInitialized) {
+            updatingDevicePicker = true
+            deviceField.setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 1 else 0)
+            updatingDevicePicker = false
+        }
     }
 
     private fun connect(device: BluetoothDevice) {
