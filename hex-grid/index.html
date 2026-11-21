@@ -4,84 +4,56 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=3,viewport-fit=cover">
 <meta name="theme-color" content="#101820">
-<title>Карта сот — Firelight</title>
+<title>Порядок світлодіодів — Firelight</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#192630;--line:#526674;--text:#edf4f7;--muted:#a9bac4;--active:#f3b64b;--activeStroke:#ffe0a0}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif}
-main{max-width:760px;margin:auto;padding:20px 14px 30px}
-h1{font-size:24px;margin:0 0 6px}
-p{color:var(--muted);line-height:1.45;margin:6px 0 14px}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-button{border:1px solid #526674;background:var(--panel);color:var(--text);padding:11px 14px;border-radius:12px;font:inherit;font-weight:600}
-button.primary{background:var(--active);border-color:var(--active);color:#241a0b}
-button:active{transform:scale(.98)}
-.info{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:10px 2px;color:var(--muted);font-size:14px}
-.canvas{background:#14212a;border:1px solid #344854;border-radius:16px;padding:8px;overflow:auto;touch-action:pan-x pan-y}
-svg{display:block;width:100%;height:auto;min-width:300px;max-height:68vh}
-.hex{cursor:pointer;outline:none}
-.hex polygon{fill:#1c303c;stroke:#718692;stroke-width:1.8;transition:fill .12s,stroke .12s}
-.hex.selected polygon{fill:var(--active);stroke:var(--activeStroke);stroke-width:2.5}
-.hex:focus polygon{stroke:#fff;stroke-width:3.5}
-.hex text{pointer-events:none;fill:#d9e4e9;font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:central}
-.hex.selected text{fill:#261b0b}
-.note{font-size:13px;margin-top:12px}
-@media(min-width:600px){main{padding-top:28px}.canvas{padding:14px}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:760px;margin:auto;padding:20px 14px 30px}h1{font-size:24px;margin:0 0 6px}p{color:var(--muted);line-height:1.45;margin:6px 0 14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}button{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:11px 14px;border-radius:12px;font:inherit;font-weight:600}button.primary{background:var(--active);border-color:var(--active);color:#241a0b}button:active{transform:scale(.98)}
+.info{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:10px 2px;color:var(--muted);font-size:14px}.canvas{background:#14212a;border:1px solid #344854;border-radius:16px;padding:8px;overflow:auto;touch-action:pan-x pan-y}
+svg{display:block;width:100%;height:auto;min-width:300px;max-height:72vh}.hex{cursor:pointer;outline:none}.hex polygon{fill:#1c303c;stroke:#718692;stroke-width:1.8;transition:fill .12s,stroke .12s}.hex.marked polygon{fill:var(--active);stroke:var(--activeStroke);stroke-width:2.5}.hex:focus polygon{stroke:#fff;stroke-width:3.5}
+.hex text{pointer-events:none;fill:#d9e4e9;font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:central}.hex.marked text{fill:#261b0b}
+.note{font-size:13px;margin-top:12px}@media(min-width:600px){main{padding-top:28px}.canvas{padding:14px}}
 </style>
 </head>
-<body>
-<main>
-  <h1>Карта шестигранників</h1>
-  <p>Торкнись кожної комірки, де у твоїй композиції є сот. Орієнтація правильна: кут зверху й знизу, вертикальні сторони зліва та справа.</p>
-  <div class="info"><span id="count">Позначено: 0</span><span id="size">Сітка: 9 × 11</span></div>
-  <div class="canvas"><svg id="grid" role="group" aria-label="Інтерактивна сітка шестигранників"></svg></div>
-  <div class="toolbar">
-    <button id="addRow">＋ Ряд</button>
-    <button id="addCol">＋ Стовпець</button>
-    <button id="clear">Очистити</button>
-  </div>
-  <div class="toolbar">
-    <button class="primary" id="share">Поділитися схемою</button>
-  </div>
-  <p class="note" id="status">Позначені соти підсвічуються жовтим. Схема кодується в посиланні — надішли мені його після завершення.</p>
+<body><main>
+<h1>Порядок світлодіодів</h1>
+<p>Натискай на соти в тому порядку, в якому мають загорятися світлодіоди. Перша отримає номер 1, наступна — 2 і так далі. Схема вже містить твої 26 сот.</p>
+<div class="info"><span id="count">Порядок: 0 із 26</span><span>Сітка: 12 × 11</span></div>
+<div class="canvas"><svg id="grid" role="group" aria-label="Твоя схема з 26 сотами"></svg></div>
+<div class="toolbar">
+<button id="undo">Скасувати останню</button><button id="clear">Скинути порядок</button>
+</div>
+<div class="toolbar"><button class="primary" id="share">Поділитися порядком</button></div>
+<p class="note" id="status">Натискай соти послідовно. Якщо помилився — скасуй останній крок. Після завершення надішли мені посилання.</p>
 </main>
 <script>
 (()=>{
- const svg=document.getElementById('grid'),countEl=document.getElementById('count'),sizeEl=document.getElementById('size'),statusEl=document.getElementById('status');
- let rows=11,cols=9,selected=new Set();
+ const svg=document.getElementById('grid'),countEl=document.getElementById('count'),statusEl=document.getElementById('status');
+ const rows=11,cols=12,active=[107,118,131,19,25,26,29,31,32,33,36,38,39,40,41,42,45,46,48,52,59,64,70,83,94,95];
+ let order=[];
  const NS='http://www.w3.org/2000/svg',R=27,dx=Math.sqrt(3)*R,dy=1.5*R,margin=R+7;
  const el=(tag,attrs={})=>{const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);return n};
- function encode(){const coords=[...selected].sort().join('.');return '#map='+rows+','+cols+':'+coords}
- function decode(){const m=location.hash.match(/^#map=(\d+),(\d+):(.*)$/);if(!m)return;rows=Math.max(1,Math.min(30,+m[1]));cols=Math.max(1,Math.min(24,+m[2]));selected=new Set((m[3]||'').split('.').filter(Boolean).map(Number).filter(n=>n>=0&&n<rows*cols))}
+ function encode(){return '#order='+rows+','+cols+':'+order.join('.')}
+ function decode(){const m=location.hash.match(/^#order=11,12:(.*)$/);if(m){const nums=(m[1]||'').split('.').filter(Boolean).map(Number);order=nums.filter((n,i)=>active.includes(n)&&nums.indexOf(n)===i)}}
  function draw(){
   svg.replaceChildren();
-  const w=(cols-1)*dx+dx/2+2*margin,h=(rows-1)*dy+2*margin;
-  svg.setAttribute('viewBox','0 0 '+w+' '+h);
-  svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+  const w=cols*dx+margin*2,h=(rows-1)*dy+margin*2;
+  svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.setAttribute('preserveAspectRatio','xMidYMid meet');
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
-   const id=r*cols+c,x=margin+c*dx+(r%2)*dx/2,y=margin+r*dy;
+   const id=r*cols+c;if(!active.includes(id))continue;
+   const x=margin+c*dx+(r%2)*dx/2,y=margin+r*dy,idx=order.indexOf(id);
    const pts=Array.from({length:6},(_,i)=>{const a=(-90+i*60)*Math.PI/180;return (x+R*Math.cos(a))+','+(y+R*Math.sin(a))}).join(' ');
-   const g=el('g',{class:'hex'+(selected.has(id)?' selected':''),tabindex:'0',role:'button','aria-label':'Ряд '+(r+1)+', стовпець '+(c+1)+(selected.has(id)?', позначено':', не позначено')});
-   g.append(el('polygon',{points:pts}));
-   const t=el('text',{x,y});t.textContent=String(id+1);g.append(t);
-   const toggle=()=>{if(selected.has(id))selected.delete(id);else selected.add(id);draw();history.replaceState(null,'',encode())};
-   g.addEventListener('click',toggle);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}});
-   svg.append(g);
+   const g=el('g',{class:'hex'+(idx>=0?' marked':''),tabindex:'0',role:'button','aria-label':'Ряд '+(r+1)+', стовпець '+(c+1)+(idx>=0?', номер '+(idx+1):', ще не пронумеровано')});
+   g.append(el('polygon',{points:pts}));const t=el('text',{x,y});t.textContent=idx>=0?String(idx+1):'·';g.append(t);
+   const toggle=()=>{if(order.includes(id)){statusEl.textContent='Ця сота вже має номер '+(order.indexOf(id)+1)+'. Для зміни порядку скасуй кроки до неї.';return}order.push(id);draw();history.replaceState(null,'',encode());statusEl.textContent='Додано крок '+order.length+'.'};
+   g.addEventListener('click',toggle);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}});svg.append(g);
   }
-  countEl.textContent='Позначено: '+selected.size;
-  sizeEl.textContent='Сітка: '+cols+' × '+rows;
+  countEl.textContent='Порядок: '+order.length+' із '+active.length;
  }
- document.getElementById('addRow').onclick=()=>{if(rows<30){rows++;draw();history.replaceState(null,'',encode())}};
- document.getElementById('addCol').onclick=()=>{if(cols<24){const next=new Set();for(const id of selected){const r=Math.floor(id/cols),c=id%cols;next.add(r*(cols+1)+c)}selected=next;cols++;draw();history.replaceState(null,'',encode())}};
- document.getElementById('clear').onclick=()=>{selected.clear();draw();history.replaceState(null,'',encode());statusEl.textContent='Позначки очищено.'};
- document.getElementById('share').onclick=async()=>{
-  const url=location.href.split('#')[0]+encode();
-  history.replaceState(null,'',encode());
-  try{await navigator.clipboard.writeText(url);statusEl.textContent='Посилання скопійовано. Надішли його мені в чат.'}
-  catch(e){statusEl.textContent='Скопіюй посилання з адресного рядка браузера.';prompt('Посилання на твою схему:',url)}
- };
+ document.getElementById('undo').onclick=()=>{if(order.length){const n=order.pop();draw();history.replaceState(null,'',encode());statusEl.textContent='Скасовано крок '+(order.length+1)+'.'}};
+ document.getElementById('clear').onclick=()=>{order=[];draw();history.replaceState(null,'',encode());statusEl.textContent='Порядок скинуто. Можеш почати заново.'};
+ document.getElementById('share').onclick=async()=>{const url=location.href.split('#')[0]+encode();history.replaceState(null,'',encode());try{await navigator.clipboard.writeText(url);statusEl.textContent='Посилання скопійовано. Надішли його мені в чат.'}catch(e){statusEl.textContent='Скопіюй посилання з адресного рядка браузера.';prompt('Посилання на твій порядок:',url)}};
  decode();draw();
 })();
-</script>
-</body>
-</html>
+</script></body></html>
