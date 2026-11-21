@@ -494,7 +494,9 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
         sceneHeader.addView(
-            text("СЦЕНИ", 11f, muted, true),
+            text("СЦЕНИ", 11f, muted, true).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            },
             LinearLayout.LayoutParams(-2, dp(40))
         )
         val sceneModeIcons = LinearLayout(this).apply {
@@ -502,7 +504,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
         }
         sceneHeader.addView(sceneModeIcons, LinearLayout.LayoutParams(0, dp(40), 1f))
-        sceneCard.addView(sceneHeader)
+        sceneCard.addView(sceneHeader, LinearLayout.LayoutParams(-1, dp(40)))
         addGap(sceneCard, 8)
 
         val sceneContent = LinearLayout(this).apply {
