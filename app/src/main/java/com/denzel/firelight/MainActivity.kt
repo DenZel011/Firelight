@@ -108,7 +108,9 @@ class MainActivity : Activity() {
 
             // Give red, orange and yellow a short speed-scaled dwell after each
             // smooth transition. Other colors remain continuously in motion.
-            val palette = floatArrayOf(0f, 30f, 60f, 120f, 180f, 240f, 280f)
+            // Warm colors: red (0°), orange (15°), yellow (30°).
+            // The former yellow at 60° is intentionally removed.
+            val palette = floatArrayOf(0f, 15f, 30f, 120f, 180f, 240f, 280f)
             val redHold = 0.60f
             val orangeHold = 0.75f
             val yellowHold = 0.60f
