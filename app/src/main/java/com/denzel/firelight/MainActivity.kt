@@ -127,7 +127,11 @@ class MainActivity : Activity() {
                     else -> 0f
                 }
                 if (remaining <= 1f) {
-                    hue = (palette[i] + delta * remaining + 360f) % 360f
+                    // Cosine easing makes each transition start and finish at
+                    // zero hue velocity, avoiding the visible snap at color boundaries.
+                    val t = remaining.coerceIn(0f, 1f)
+                    val eased = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
+                    hue = (palette[i] + delta * eased + 360f) % 360f
                     break
                 }
                 if (remaining <= 1f + hold) {
@@ -141,7 +145,7 @@ class MainActivity : Activity() {
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
             // Update more frequently; BLE output is safely coalesced to its
             // supported write interval in flushPendingColor().
-            handler.postDelayed(this, 50L)
+            handler.postDelayed(this, 30L)
         }
     }
 
@@ -1028,7 +1032,7 @@ class MainActivity : Activity() {
 
         if (!writeScheduled) {
             writeScheduled = true
-            val wait = (65L - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
+            val wait = (50L - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
             handler.postDelayed({ flushPendingColor() }, wait)
         }
     }
@@ -1044,7 +1048,7 @@ class MainActivity : Activity() {
 
         if (pendingPacket != null && !writeScheduled) {
             writeScheduled = true
-            handler.postDelayed({ flushPendingColor() }, 65L)
+            handler.postDelayed({ flushPendingColor() }, 50L)
         }
     }
 
