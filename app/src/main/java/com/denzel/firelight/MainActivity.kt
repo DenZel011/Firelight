@@ -711,11 +711,12 @@ class MainActivity : Activity() {
         val modes=chosen.map{it.mode}.distinct()
         fireButton.text=when {chosen.isEmpty()||modes.size!=1->"Змішаний стан";modes.first()==EffectMode.FIRE->"Вимкнути вогонь";else->"Увімкнути вогонь"}
         rainbowButton.text=when {chosen.isEmpty()||modes.size!=1->"Змішаний стан";modes.first()==EffectMode.RAINBOW->"Вимкнути веселку";else->"Увімкнути веселку"}
+        val one=chosen.firstOrNull()
         status.text=when {
             chosen.isEmpty()->"Обери підключений пристрій"
             chosen.size>1->"Обрано ${chosen.size} · керування групою"
-            !d!!.stripStateKnown->"Підключено · стан стрічки невідомий"
-            d.stripOn->"Підключено · стрічка увімкнена"
+            one==null || !one.stripStateKnown->"Підключено · стан стрічки невідомий"
+            one.stripOn->"Підключено · стрічка увімкнена"
             else->"Підключено · стрічка вимкнена"
         }
         deviceAdapter?.notifyDataSetChanged()
