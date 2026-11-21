@@ -1089,7 +1089,8 @@ class MainActivity : Activity() {
 
         if (!writeScheduled) {
             writeScheduled = true
-            val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
+            val interval = if (isMelkDevice) 100L
+                else if (activeMode == EffectMode.RAINBOW) 30L else 50L
             val wait = (interval - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
             handler.postDelayed(colorFlushTask, wait)
         }
@@ -1106,7 +1107,8 @@ class MainActivity : Activity() {
 
         if (pendingPacket != null && !writeScheduled) {
             writeScheduled = true
-            val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
+            val interval = if (isMelkDevice) 100L
+                else if (activeMode == EffectMode.RAINBOW) 30L else 50L
             handler.postDelayed(colorFlushTask, interval)
         }
     }
