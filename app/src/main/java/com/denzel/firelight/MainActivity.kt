@@ -357,6 +357,7 @@ class MainActivity : Activity() {
             override fun isEnabled(position: Int): Boolean = !connected
 
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val chosen = if (position == 0) targetAddress else melkAddress
                 return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
                     text = deviceNames[position]
                     textSize = 14f
@@ -379,7 +380,7 @@ class MainActivity : Activity() {
                     }
                     textSize = 14f
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
+                    setTextColor(if (chosen.equals(selectedDeviceAddress, ignoreCase = true)) Color.WHITE else Color.rgb(190, 199, 215))
                     setPadding(dp(16), 0, dp(12), 0)
                     setBackgroundColor(Color.TRANSPARENT)
                     minHeight = dp(48)
