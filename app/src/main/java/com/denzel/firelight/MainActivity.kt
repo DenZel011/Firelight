@@ -896,6 +896,70 @@ class MainActivity : Activity() {
             setPadding(0, dp(2), 0, dp(12))
         }
         page.addView(hint)
+
+        fun cancelTestRunners(d: DeviceSession) {
+            d.fireRunner?.let { handler.removeCallbacks(it) }
+            d.rainbowRunner?.let { handler.removeCallbacks(it) }
+            d.fillSpeedRunner?.let { handler.removeCallbacks(it) }
+            d.flushRunner?.let { handler.removeCallbacks(it) }
+            d.pending = null
+            d.flushQueued = false
+            d.mode = EffectMode.NONE
+        }
+
+        val testActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val runTest = Button(this).apply {
+            text = "Перевірити №168"
+            isAllCaps = false
+            setOnClickListener {
+                val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+                if (targets.isEmpty()) {
+                    hint.text = "Підключи та вибери MELK-OA21 для тесту."
+                } else {
+                    targets.forEach { d ->
+                        cancelTestRunners(d)
+                        d.stripOn = true
+                        d.stripStateKnown = true
+                        sendPowerCommand(d, true)
+                        handler.postDelayed({
+                            if (d.connected && d.characteristic != null) {
+                                sendMelkMode(d, 168)
+                                handler.postDelayed({
+                                    if (d.connected && d.characteristic != null) sendMelkModeSpeed(d, 50)
+                                }, 120L)
+                            }
+                        }, 120L)
+                    }
+                    hint.text = "Запущено ефект №168 (Elevator) на MELK-OA21. Ефект експериментальний."
+                }
+            }
+        }
+        val stopTest = Button(this).apply {
+            text = "Зупинити тест"
+            isAllCaps = false
+            setOnClickListener {
+                val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+                if (targets.isEmpty()) {
+                    hint.text = "Немає підключеного MELK-OA21."
+                } else {
+                    targets.forEach { d ->
+                        cancelTestRunners(d)
+                        val black = byteArrayOf(0x7E, 0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0x00, 0xEF.toByte())
+                        writeBlePacketTo(d.gatt ?: return@forEach, d.characteristic ?: return@forEach, black)
+                        d.stripOn = true
+                        d.stripStateKnown = true
+                    }
+                    hint.text = "Тест зупинено. Надіслано команду статичного чорного кольору."
+                }
+            }
+        }
+        testActions.addView(runTest, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
+        testActions.addView(stopTest, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
+        page.addView(testActions, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(8) })
+
         val selected = TextView(this).apply {
             text = "Не вибрано"
             textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
