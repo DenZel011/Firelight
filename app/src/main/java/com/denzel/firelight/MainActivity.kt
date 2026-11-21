@@ -111,9 +111,13 @@ class MainActivity : Activity() {
             val slowEndFactor = 1f + 0.30f * ((20 - speed) / 19f)
             val baseCycleMs = ((12500L - (speed - 1) * 520L).coerceAtLeast(1800L) * slowEndFactor).toLong()
 
-            // Exact hues matching the user's reference RGB colors:
-            // orange (255,10,0), yellow (255,100,0), purple (255,0,255).
-            val palette = floatArrayOf(0f, 2.3529413f, 23.5294118f, 120f, 180f, 240f, 300f)
+            // MELK uses a different warm palette from ELK:
+            // orange (255,75,0), yellow (255,255,0).
+            val palette = if (isMelkDevice) {
+                floatArrayOf(0f, 17.6470588f, 60f, 120f, 180f, 240f, 300f)
+            } else {
+                floatArrayOf(0f, 2.3529413f, 23.5294118f, 120f, 180f, 240f, 300f)
+            }
             // Equal warm-color pauses; shorten all three only at max speed.
             val pauseScale = if (speed == 20) 0.75f else 1f
             val holdAngle = (360f / 7f) * 0.60f * pauseScale
@@ -1022,8 +1026,11 @@ class MainActivity : Activity() {
     }
 
     private fun sendPowerCommand(on: Boolean) {
-        // ELK-BLEDOM / Lotus Lantern dedicated power command on FFF0:FFF3.
-        val packet = if (on) {
+        // MELK's confirmed wake/on frame is the short command used at initialization.
+        // Keep ELK's original Lotus Lantern power frames unchanged.
+        val packet = if (isMelkDevice && on) {
+            byteArrayOf(0x7E, 0x04, 0x04)
+        } else if (on) {
             byteArrayOf(0x7E, 0x04, 0x04, 0xF0.toByte(), 0x00, 0x01, 0xFF.toByte(), 0x00, 0xEF.toByte())
         } else {
             byteArrayOf(0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
