@@ -490,7 +490,7 @@ class MainActivity : Activity() {
             clipToPadding = true
         }
         sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
-        addGap(sceneCard, 14)
+        addGap(sceneCard, 8)
 
         val sceneContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -502,8 +502,8 @@ class MainActivity : Activity() {
         val sceneSymbol = text(sceneSymbols[0], 48f, Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
-        addGap(sceneContent, 12)
+        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(62)))
+        addGap(sceneContent, 4)
         val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
