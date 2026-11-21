@@ -568,7 +568,9 @@ class MainActivity : Activity() {
         // Compact, equally sized tap targets; the group stays centered in the
         // available header area and can grow when more scenes are added.
         sceneSymbols.forEachIndexed { index, symbol ->
-            val icon = text(symbol, if (index == 1) 16f else 21f, Color.WHITE, true).apply {
+            // Force text presentation so Android does not render the sun as a yellow emoji.
+            val headerSymbol = if (index == 1) symbol + "\uFE0E" else symbol
+            val icon = text(headerSymbol, if (index == 1) 16f else 21f, Color.WHITE, true).apply {
                 gravity = android.view.Gravity.CENTER
                 isClickable = true
                 isFocusable = true
