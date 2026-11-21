@@ -475,171 +475,117 @@ class MainActivity : Activity() {
             setPadding(0, dp(2), 0, dp(8))
         }
 
-        val sceneNames = listOf("Заповнення", "Схід сонця", "Завантаження")
-        val sceneSymbols = listOf("◩", "☀", "⤓")
-        val sceneSymbolSizes = listOf(60f, 48f, 60f)
-        val sceneColors = listOf(
-            intArrayOf(0, 80, 255),
-            intArrayOf(255, 0, 0),
-            intArrayOf(0, 255, 0)
+        val standardModes = listOf(
+            1 to "Стрибки кольорів",
+            2 to "Стробоскоп",
+            3 to "Дихання",
+            4 to "Попередження"
         )
-        var selectedSceneIndex = 0
-
-        // Static outer card and heading. Only the content area below can move.
-        val sceneCard = card().apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(4), dp(18), dp(20))
-            clipChildren = true
-            clipToPadding = true
-        }
-        val sceneHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-        }
-        sceneHeader.addView(
-            text("СЦЕНИ", 11f, muted, true).apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL
-            },
-            LinearLayout.LayoutParams(-2, dp(40))
+        val standardScenes = listOf(
+            1 to "Схід сонця", 2 to "Захід сонця", 3 to "День народження",
+            4 to "Свічка", 5 to "Феєрверки", 6 to "Вечірка",
+            7 to "Побачення", 8 to "Зоряне небо", 9 to "Романтика",
+            10 to "Диско", 11 to "Веселка", 12 to "Кіно",
+            13 to "Різдво", 14 to "Плин", 15 to "Сон",
+            16 to "Океан", 17 to "Ліс", 18 to "Читання",
+            19 to "Робота", 20 to "Сяйво", 21 to "Ніжність",
+            22 to "Весілля", 23 to "Сніг", 24 to "Вогонь",
+            25 to "Блискавка", 26 to "День закоханих",
+            27 to "Гелловін", 28 to "Попередження",
+            150 to "Машина часу", 152 to "Машина часу 2",
+            154 to "Метеор", 155 to "Метеор 2", 156 to "Шоу феєрверків"
         )
-        val sceneModeIcons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-        }
-        sceneHeader.addView(sceneModeIcons, LinearLayout.LayoutParams(0, dp(40), 1f))
-        sceneCard.addView(sceneHeader, LinearLayout.LayoutParams(-1, dp(40)))
-        addGap(sceneCard, 0)
+        var selectedPresetId = -1
+        var selectedPresetIsScene = false
+        var sceneSpeed = 50
 
-        val sceneContent = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(4), 0, 0)
-            isClickable = true
-            clipChildren = false
+        val sceneScroll = ScrollView(this).apply {
+            isFillViewport = false
             clipToPadding = false
+            setPadding(0, 0, 0, dp(6))
         }
-        val sceneSymbol = text(sceneSymbols[0], sceneSymbolSizes[0], Color.rgb(255, 142, 105), true).apply {
-            gravity = android.view.Gravity.CENTER
-        }
-        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(76)))
-        addGap(sceneContent, 4)
-        val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
-            gravity = android.view.Gravity.CENTER
-        }
-        sceneContent.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
-        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
-        scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
+        val sceneList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        sceneScroll.addView(sceneList)
+        scenePage.addView(sceneScroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val fillSpeedCard = card().apply {
-            setPadding(dp(12), dp(10), dp(12), dp(4))
-        }
-        addModernSlider(fillSpeedCard, "Швидкість заповнення", fillSpeed, 100, "%", 2) { value ->
-            fillSpeed = value.coerceIn(0, 100)
-            selectedSessions().filter { it.isMelk }.forEach { d ->
-                d.fillSpeed = fillSpeed
-                if (d.mode == EffectMode.FILL) scheduleMelkModeSpeed(d)
-            }
-        }
-        scenePage.addView(fillSpeedCard, LinearLayout.LayoutParams(-1, -2))
-        fillSpeedCard.visibility = View.VISIBLE
-
-        fun applySceneColor(index: Int) {
-            val rgb = sceneColors[index]
-            red = rgb[0]; green = rgb[1]; blue = rgb[2]
-            if (::preview.isInitialized) updatePreview()
-            selectedSessions().forEach { d ->
-                stopActiveEffect(d)
-                d.red = red; d.green = green; d.blue = blue
-                if (!d.stripOn) {
-                    d.stripOn = true
-                    d.stripStateKnown = true
-                    sendPowerCommand(d, true)
-                }
-                if (index == 0 && d.isMelk) {
-                    d.mode = EffectMode.FILL
-                    d.fillSpeed = fillSpeed
-                    handler.postDelayed({
-                        if (d.connected && d.stripOn && d.mode == EffectMode.FILL) {
-                            sendMelkMode(d, 190) // R-G-B Flush Open
-                            handler.postDelayed({
-                                if (d.connected && d.stripOn && d.mode == EffectMode.FILL) {
-                                    sendMelkModeSpeed(d, d.fillSpeed)
-                                }
-                            }, 120L)
-                        }
-                    }, 220L)
-                } else {
-                    d.mode = EffectMode.NONE
-                    handler.postDelayed({
-                        if (d.connected && d.stripOn && d.mode == EffectMode.NONE) {
-                            sendRGBTo(d, red, green, blue)
-                        }
-                    }, 180L)
-                }
-            }
-            refreshEffectButtons()
-            activateSelectedSession()
-        }
-
-        fun showScene(nextIndex: Int, swipeLeft: Boolean) {
-            selectedSceneIndex = (nextIndex + sceneNames.size) % sceneNames.size
-            val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
-            sceneContent.animate().cancel()
-            sceneContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
-                fillSpeedCard.visibility = if (selectedSceneIndex == 0) View.VISIBLE else View.GONE
-                sceneSymbol.text = sceneSymbols[selectedSceneIndex]
-                sceneSymbol.textSize = sceneSymbolSizes[selectedSceneIndex]
-                sceneName.text = sceneNames[selectedSceneIndex]
-                sceneContent.translationX = -exitX
-                sceneContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
-                applySceneColor(selectedSceneIndex)
-            }.start()
-        }
-
-        // Compact, equally sized tap targets; the group stays centered in the
-        // available header area and can grow when more scenes are added.
-        sceneSymbols.forEachIndexed { index, symbol ->
-            // Force text presentation so Android does not render the sun as a yellow emoji.
-            val headerSymbol = if (index == 1) symbol + "\uFE0E" else symbol
-            val icon = text(headerSymbol, if (index == 1) 16f else 21f, Color.WHITE, true).apply {
-                gravity = android.view.Gravity.CENTER
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    if (index != selectedSceneIndex) {
-                        showScene(index, index > selectedSceneIndex)
-                    }
-                }
-            }
-            sceneModeIcons.addView(icon, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                marginStart = dp(1)
-                marginEnd = dp(1)
+        fun addPresetSection(title: String, entries: List<Pair<Int, String>>, isScene: Boolean) {
+            sceneList.addView(text(title, 11f, muted, true).apply {
+                setPadding(dp(4), dp(12), 0, dp(8))
             })
+            val grid = android.widget.GridLayout(this).apply {
+                columnCount = 2
+                useDefaultMargins = false
+                alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+            }
+            entries.forEach { (id, label) ->
+                val presetButton = TextView(this).apply {
+                    text = label
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dp(7), dp(5), dp(7), dp(5))
+                    isClickable = true
+                    isFocusable = true
+                }
+                fun stylePreset(active: Boolean) {
+                    presetButton.setTextColor(if (active) Color.WHITE else Color.rgb(222, 228, 239))
+                    presetButton.background = rounded(
+                        if (active) Color.rgb(83, 48, 42) else Color.rgb(29, 34, 46),
+                        12,
+                        if (active) Color.rgb(255, 142, 105) else Color.rgb(55, 63, 80)
+                    )
+                }
+                stylePreset(false)
+                presetButton.setOnClickListener {
+                    selectedPresetId = id
+                    selectedPresetIsScene = isScene
+                    for (i in 0 until grid.childCount) {
+                        val child = grid.getChildAt(i) as? TextView ?: continue
+                        val active = child === presetButton
+                        child.setTextColor(if (active) Color.WHITE else Color.rgb(222, 228, 239))
+                        child.background = rounded(
+                            if (active) Color.rgb(83, 48, 42) else Color.rgb(29, 34, 46),
+                            12,
+                            if (active) Color.rgb(255, 142, 105) else Color.rgb(55, 63, 80)
+                        )
+                    }
+                    selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }.forEach { d ->
+                        if (!d.stripOn) {
+                            d.stripOn = true
+                            d.stripStateKnown = true
+                            sendPowerCommand(d, true)
+                        }
+                        handler.postDelayed({
+                            if (d.connected && d.stripOn) {
+                                if (isScene) sendMelkScene(d, id) else sendMelkMode(d, id)
+                                handler.postDelayed({
+                                    if (d.connected && d.stripOn) sendMelkModeSpeed(d, sceneSpeed)
+                                }, 100L)
+                            }
+                        }, 120L)
+                    }
+                }
+                val lp = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = dp(48)
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                }
+                grid.addView(presetButton, lp)
+            }
+            sceneList.addView(grid, LinearLayout.LayoutParams(-1, -2))
         }
 
-        var sceneTouchStartX = 0f
-        var sceneTouchStartY = 0f
-        sceneContent.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    sceneTouchStartX = event.x
-                    sceneTouchStartY = event.y
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val deltaX = event.x - sceneTouchStartX
-                    val deltaY = event.y - sceneTouchStartY
-                    if (kotlin.math.abs(deltaX) >= dp(45) &&
-                        kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.25f) {
-                        if (deltaX < 0f) showScene(selectedSceneIndex + 1, true)
-                        else showScene(selectedSceneIndex - 1, false)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> true
-                else -> true
+        addPresetSection("СТАНДАРТНІ ЕФЕКТИ", standardModes, false)
+        addPresetSection("СЦЕНИ КОНТРОЛЕРА", standardScenes, true)
+        val sceneSpeedCard = card().apply { setPadding(dp(12), dp(10), dp(12), dp(4)) }
+        addModernSlider(sceneSpeedCard, "Швидкість ефекту", sceneSpeed, 100, "%", 2) { value ->
+            sceneSpeed = value.coerceIn(0, 100)
+            selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach {
+                sendMelkModeSpeed(it, sceneSpeed)
             }
         }
+        scenePage.addView(sceneSpeedCard, LinearLayout.LayoutParams(-1, -2))
 
         // The bottom navigation stays visible; shared controls remain outside pageHost.
         val nav = LinearLayout(this).apply {
@@ -1449,6 +1395,13 @@ class MainActivity : Activity() {
     private fun sendMelkMode(session: DeviceSession, mode: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x05, 0x03, mode.toByte(), 0x06, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+    }
+
+    private fun sendMelkScene(session: DeviceSession, sceneId: Int) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x07, 0x31, sceneId.toByte(), 0xFF.toByte(),
+            0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
         writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
     }
 
