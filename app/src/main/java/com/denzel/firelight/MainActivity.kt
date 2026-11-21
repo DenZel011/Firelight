@@ -332,17 +332,8 @@ class MainActivity : Activity() {
                         val address=(if(position==0) targetAddress else melkAddress).uppercase()
                         if(!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
                         if(selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
-                        selectedDeviceAddress=address
+                        selectedDeviceAddress=if(selectedDeviceAddresses.contains(address)) address else selectedDeviceAddresses.first()
                         activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-
-                    }
-                    setOnItemLongClickListener { _,_,position,_ ->
-                        val address=(if(position==0) targetAddress else melkAddress).uppercase()
-                        selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
-                        selectedDeviceAddress=address
-                        activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-
-                        true
                     }
                 }
                 val dialog=android.app.AlertDialog.Builder(this@MainActivity)
