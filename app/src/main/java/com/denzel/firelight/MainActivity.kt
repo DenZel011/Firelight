@@ -476,6 +476,7 @@ class MainActivity : Activity() {
 
         val sceneNames = listOf("Заповнення", "Схід сонця", "Завантаження")
         val sceneSymbols = listOf("◩", "☀", "⤓")
+        val sceneSymbolSizes = listOf(60f, 48f, 60f)
         val sceneColors = listOf(
             intArrayOf(0, 80, 255),
             intArrayOf(255, 0, 0),
@@ -516,10 +517,10 @@ class MainActivity : Activity() {
             clipChildren = false
             clipToPadding = false
         }
-        val sceneSymbol = text(sceneSymbols[0], 48f, Color.rgb(255, 142, 105), true).apply {
+        val sceneSymbol = text(sceneSymbols[0], sceneSymbolSizes[0], Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(62)))
+        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(76)))
         addGap(sceneContent, 4)
         val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
@@ -557,6 +558,7 @@ class MainActivity : Activity() {
             sceneContent.animate().cancel()
             sceneContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
                 sceneSymbol.text = sceneSymbols[selectedSceneIndex]
+                sceneSymbol.textSize = sceneSymbolSizes[selectedSceneIndex]
                 sceneName.text = sceneNames[selectedSceneIndex]
                 sceneContent.translationX = -exitX
                 sceneContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
@@ -567,7 +569,7 @@ class MainActivity : Activity() {
         // Compact, equally sized tap targets; the group stays centered in the
         // available header area and can grow when more scenes are added.
         sceneSymbols.forEachIndexed { index, symbol ->
-            val icon = text(symbol, 21f, Color.WHITE, true).apply {
+            val icon = text(symbol, if (index == 1) 16f else 21f, Color.WHITE, true).apply {
                 gravity = android.view.Gravity.CENTER
                 isClickable = true
                 isFocusable = true
