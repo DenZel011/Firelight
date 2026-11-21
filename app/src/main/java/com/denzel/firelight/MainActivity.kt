@@ -33,6 +33,14 @@ class MainActivity : Activity() {
 
     private var connected = false
     private var fireEnabled = false
+    private enum class EffectMode { NONE, FIRE, RAINBOW }
+    private enum class DeviceLayout { SIMULTANEOUS, SEQUENTIAL }
+    private var activeMode = EffectMode.NONE
+    private var deviceLayout = DeviceLayout.SIMULTANEOUS
+    private var rainbowSpeed = 15
+    private var rainbowPhase = 0f
+    private var rainbowLastTickAt = 0L
+    private lateinit var rainbowButton: Button
     private var scanning = false
     private var deviceAdapter: ArrayAdapter<String>? = null
     private val deviceNames = listOf("ELK-BLEDOB", "Пристрій 2", "Пристрій 3", "Пристрій 4")
@@ -82,6 +90,26 @@ class MainActivity : Activity() {
     private val powerStateTimeout = Runnable {
         if (connected && !stripStateKnown) {
             status.text = "Підключено · контролер не передав стан стрічки"
+        }
+    }
+
+    private val rainbowTask = object : Runnable {
+        override fun run() {
+            if (activeMode != EffectMode.RAINBOW || !connected || !stripOn) return
+            val now = SystemClock.uptimeMillis()
+            val elapsed = if (rainbowLastTickAt == 0L) 80L else (now - rainbowLastTickAt).coerceIn(1L, 250L)
+            rainbowLastTickAt = now
+            val cycleMs = (12500L - (rainbowSpeed.coerceIn(1, 20) - 1) * 520L).coerceAtLeast(1800L)
+            rainbowPhase = (rainbowPhase + elapsed.toFloat() / cycleMs.toFloat() * 7f) % 7f
+            val palette = floatArrayOf(0f, 30f, 60f, 120f, 180f, 240f, 280f)
+            val index = kotlin.math.floor(rainbowPhase).toInt() % palette.size
+            val next = (index + 1) % palette.size
+            val fraction = rainbowPhase - kotlin.math.floor(rainbowPhase)
+            val delta = ((palette[next] - palette[index] + 540f) % 360f) - 180f
+            val hue = (palette[index] + delta * fraction + 360f) % 360f
+            val rgb = Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+            sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+            handler.postDelayed(this, 80L)
         }
     }
 
@@ -454,6 +482,23 @@ class MainActivity : Activity() {
         addGap(tuningCard, 4)
         firePage.addView(tuningCard)
 
+        val rainbowPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(8))
+        }
+        val rainbowTuningCard = card().apply {
+            setPadding(dp(12), dp(12), dp(12), dp(6))
+        }
+        rainbowTuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
+        addGap(rainbowTuningCard, 7)
+        addModernSlider(rainbowTuningCard, "Швидкість", rainbowSpeed, 20, "/20", 8) {
+            rainbowSpeed = it.coerceIn(1, 20)
+        }
+        rainbowButton = actionButton("Увімкнути веселку", true) { toggleRainbow() }
+        rainbowTuningCard.addView(rainbowButton, LinearLayout.LayoutParams(-1, dp(40)))
+        addGap(rainbowTuningCard, 4)
+        rainbowPage.addView(rainbowTuningCard)
+
         // Bottom navigation stays visible on every page. Only the first page
         // is implemented for now; the remaining tabs are intentionally blank.
         val nav = LinearLayout(this).apply {
@@ -470,6 +515,8 @@ class MainActivity : Activity() {
             pageHost.removeAllViews()
             if (index == 0) {
                 pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
+            } else if (index == 2) {
+                pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
             }
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
@@ -731,7 +778,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     status.text = "Від'єднано"
                     deviceAdapter?.notifyDataSetChanged()
-                    fireButton.text = "Увімкнути ефект вогню"
+                    stopActiveEffect()
                     bulbButton.setLit(null)
                 }
 
@@ -875,11 +922,7 @@ class MainActivity : Activity() {
             stripOn = isOn
             stripStateKnown = true
             bulbButton.setLit(isOn)
-            if (!isOn) {
-                fireEnabled = false
-                handler.removeCallbacks(fireTask)
-                fireButton.text = "Увімкнути ефект вогню"
-            }
+            if (!isOn) stopActiveEffect()
             status.text = if (isOn) "Підключено · стрічка увімкнена"
                 else "Підключено · стрічка вимкнена"
         }
@@ -992,9 +1035,7 @@ class MainActivity : Activity() {
         if (!stripOn) {
             sendPowerCommand(false)
             bulbButton.setLit(stripOn)
-            fireEnabled = false
-            handler.removeCallbacks(fireTask)
-            fireButton.text = "Увімкнути ефект вогню"
+            stopActiveEffect()
         } else {
             bulbButton.setLit(stripOn)
             // Wake the controller with its dedicated power command before sending RGB.
@@ -1012,48 +1053,81 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun stopActiveEffect() {
+        handler.removeCallbacks(fireTask)
+        handler.removeCallbacks(rainbowTask)
+        fireEnabled = false
+        activeMode = EffectMode.NONE
+        if (::fireButton.isInitialized) fireButton.text = "Увімкнути вогонь"
+        if (::rainbowButton.isInitialized) rainbowButton.text = "Увімкнути веселку"
+    }
+
     private fun toggleFire() {
         if (!connected) {
-            Toast.makeText(
-                this,
-                "Спочатку підключи контролер",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
             return
         }
-
         val wasStripOff = !stripStateKnown || !stripOn
         if (wasStripOff) {
             stripOn = true
             stripStateKnown = true
-            bulbButton.setLit(stripOn)
+            bulbButton.setLit(true)
             sendPowerCommand(true)
         }
-        fireEnabled = !fireEnabled
-
-        if (fireEnabled) {
-            fireButton.text = "Вимкнути ефект вогню"
-            resetFireMotion()
-            if (wasStripOff) {
-                handler.postDelayed({
-                    if (fireEnabled && connected && stripOn) fireTask.run()
-                }, 180L)
-            } else {
-                fireTask.run()
-            }
-        } else {
-            handler.removeCallbacks(fireTask)
-            fireButton.text = "Увімкнути ефект вогню"
+        if (activeMode == EffectMode.FIRE) {
+            stopActiveEffect()
             sendCurrentColor()
+            return
         }
+        stopActiveEffect()
+        activeMode = EffectMode.FIRE
+        fireEnabled = true
+        fireButton.text = "Вимкнути вогонь"
+        rainbowButton.text = "Увімкнути веселку"
+        resetFireMotion()
+        if (wasStripOff) {
+            handler.postDelayed({
+                if (activeMode == EffectMode.FIRE && connected && stripOn) fireTask.run()
+            }, 180L)
+        } else fireTask.run()
+    }
+
+    private fun toggleRainbow() {
+        if (!connected) {
+            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val wasStripOff = !stripStateKnown || !stripOn
+        if (wasStripOff) {
+            stripOn = true
+            stripStateKnown = true
+            bulbButton.setLit(true)
+            sendPowerCommand(true)
+        }
+        if (activeMode == EffectMode.RAINBOW) {
+            stopActiveEffect()
+            sendCurrentColor()
+            return
+        }
+        stopActiveEffect()
+        activeMode = EffectMode.RAINBOW
+        fireEnabled = false
+        fireButton.text = "Увімкнути вогонь"
+        rainbowButton.text = "Вимкнути веселку"
+        rainbowPhase = 0f
+        rainbowLastTickAt = 0L
+        if (deviceLayout == DeviceLayout.SEQUENTIAL) {
+            // Reserved for the future sequential-panel effect implementation.
+        }
+        if (wasStripOff) {
+            handler.postDelayed({
+                if (activeMode == EffectMode.RAINBOW && connected && stripOn) rainbowTask.run()
+            }, 180L)
+        } else rainbowTask.run()
     }
 
     private fun stopFireForManual() {
-        if (fireEnabled) {
-            fireEnabled = false
-            handler.removeCallbacks(fireTask)
-            fireButton.text = "Увімкнути ефект вогню"
-        }
+        if (activeMode == EffectMode.FIRE) stopActiveEffect()
     }
 
     private fun updatePreview() {
@@ -1077,8 +1151,7 @@ class MainActivity : Activity() {
 
     private fun disconnect() {
         stopScan()
-        fireEnabled = false
-        handler.removeCallbacks(fireTask)
+        stopActiveEffect()
         handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
         pendingPacket = null
@@ -1088,7 +1161,7 @@ class MainActivity : Activity() {
 
         status.text = "Статус: не підключено"
         deviceAdapter?.notifyDataSetChanged()
-        fireButton.text = "Увімкнути ефект вогню"
+        stopActiveEffect()
         bulbButton.setLit(null)
     }
 
@@ -1096,8 +1169,7 @@ class MainActivity : Activity() {
         // Release the BLE peripheral when the Activity is closed. Leaving a GATT
         // client open can keep the strip connected and invisible to other scanners.
         stopScan()
-        fireEnabled = false
-        handler.removeCallbacks(fireTask)
+        stopActiveEffect()
         handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
         try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
