@@ -31,16 +31,24 @@ class MainActivity : Activity() {
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
     private data class DeviceSession(
-        val address: String,
-        val isMelk: Boolean,
-        var gatt: BluetoothGatt? = null,
-        var characteristic: BluetoothGattCharacteristic? = null,
+        val address: String, val isMelk: Boolean,
+        var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
-        var connected: Boolean = false,
-        var stripOn: Boolean = false,
-        var stripStateKnown: Boolean = false
+        var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
+        var mode: EffectMode = EffectMode.NONE,
+        var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
+        var speed: Int = 15, var spread: Int = 0, var rainbowSpeed: Int = 15,
+        var phase: Float = 0f, var lastTick: Long = 0L,
+        var level: Float = .76f, var targetLevel: Float = .76f, var hueShift: Float = 0f,
+        var targetHue: Float = 0f, var saturation: Float = .94f, var targetSaturation: Float = .94f,
+        var nextChange: Long = 0L, var fireTick: Long = 0L, var flare: Float = 0f,
+        var smoothing: Float = 78f, var pending: ByteArray? = null, var flushQueued: Boolean = false,
+        var lastWrite: Long = 0L, var fireRunner: Runnable? = null, var rainbowRunner: Runnable? = null,
+        var flushRunner: Runnable? = null
     )
     private val sessions = linkedMapOf<String, DeviceSession>()
+    private val selectedDeviceAddresses = linkedSetOf("BE:27:8A:00:73:DE")
+    private var suppressFirstDeviceSelection = true
 
     private var connected = false
     private var fireEnabled = false
@@ -111,167 +119,72 @@ class MainActivity : Activity() {
     // A named callback lets power-off cancel every queued RGB flush reliably.
     private val colorFlushTask = Runnable { flushPendingColor() }
 
-    private val rainbowTask = object : Runnable {
-        override fun run() {
-            if (activeMode != EffectMode.RAINBOW || !connected || !stripOn) return
-            val now = SystemClock.uptimeMillis()
-            val elapsed = if (rainbowLastTickAt == 0L) 50L else (now - rainbowLastTickAt).coerceIn(1L, 180L)
-            rainbowLastTickAt = now
-
-            // Speed 1 is intentionally 30% slower; the adjustment fades out
-            // smoothly toward the fastest setting without changing the slider range.
-            val speed = rainbowSpeed.coerceIn(1, 20)
-            val slowEndFactor = 1f + 0.30f * ((20 - speed) / 19f)
-            val baseCycleMs = ((12500L - (speed - 1) * 520L).coerceAtLeast(1800L) * slowEndFactor).toLong()
-
-            // MELK uses a different warm palette from ELK:
-            // orange (255,75,0), yellow (255,255,0).
-            val palette = if (isMelkDevice) {
-                floatArrayOf(0f, 17.6470588f, 60f, 120f, 180f, 240f, 300f)
-            } else {
-                floatArrayOf(0f, 2.3529413f, 23.5294118f, 120f, 180f, 240f, 300f)
-            }
-            // Equal warm-color pauses; shorten all three only at max speed.
-            val pauseScale = if (speed == 20) 0.75f else 1f
-            val holdAngle = (360f / 7f) * 0.60f * pauseScale
-            val redHold = holdAngle
-            val orangeHold = holdAngle
-            val yellowHold = holdAngle
-            val totalPhase = 360f + redHold + orangeHold + yellowHold
-            // Keep the previous overall rainbow timing while measuring progress
-            // in hue degrees. Each transition now takes time proportional to
-            // its angular distance, so hue moves at a consistent average rate.
-            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 360f) % totalPhase
-
-            var remaining = rainbowPhase
-            var rgb = Color.HSVToColor(floatArrayOf(palette[0], 1f, 1f))
-            for (i in palette.indices) {
-                val next = (i + 1) % palette.size
-                val delta = ((palette[next] - palette[i] + 540f) % 360f) - 180f
-                val segmentAngle = kotlin.math.abs(delta)
-                val hold = when (next) {
-                    0 -> redHold
-                    1 -> orangeHold
-                    2 -> yellowHold
-                    else -> 0f
-                }
-                val from = Color.HSVToColor(floatArrayOf(palette[i], 1f, 1f))
-                val to = Color.HSVToColor(floatArrayOf(palette[next], 1f, 1f))
-                if (remaining <= segmentAngle) {
-                    // Cosine-eased RGB crossfade avoids abrupt channel switching.
-                    // Transition duration scales with hue distance, keeping the
-                    // same average hue speed on short and long color intervals.
-                    val t = (remaining / segmentAngle.coerceAtLeast(0.001f)).coerceIn(0f, 1f)
-                    val blend = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
-                    val r = Color.red(from) * (1f - blend) + Color.red(to) * blend
-                    val g = Color.green(from) * (1f - blend) + Color.green(to) * blend
-                    val b = Color.blue(from) * (1f - blend) + Color.blue(to) * blend
-                    val peak = maxOf(r, g, b).coerceAtLeast(1f)
-                    val scale = 255f / peak
-                    rgb = Color.rgb(
-                        (r * scale).toInt().coerceIn(0, 255),
-                        (g * scale).toInt().coerceIn(0, 255),
-                        (b * scale).toInt().coerceIn(0, 255)
-                    )
-                    break
-                }
-                if (remaining <= segmentAngle + hold) {
-                    rgb = to
-                    break
-                }
-                remaining -= segmentAngle + hold
-            }
-
-            sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
-            // Render at 50 FPS; BLE writes are paced separately to avoid queueing.
-            handler.postDelayed(this, 20L)
-        }
+    private fun resetFireMotion(session: DeviceSession) {
+        session.level=.76f; session.targetLevel=.76f; session.hueShift=0f; session.targetHue=0f
+        session.saturation=1f; session.targetSaturation=1f; session.nextChange=0L
+        session.fireTick=0L; session.flare=0f; session.smoothing=78f
     }
 
-    private val fireTask = object : Runnable {
-        override fun run() {
-            if (!fireEnabled || !connected || !stripOn) return
-
-            val now = SystemClock.uptimeMillis()
-            val elapsed = if (fireLastTickAt == 0L) 80L
-                else (now - fireLastTickAt).coerceIn(1L, 250L)
-            fireLastTickAt = now
-
-            // Fast, irregular flame flicker. The previous speed factor was inverted:
-            // at the fastest slider setting it actually waited several seconds.
-            if (now >= fireNextChangeAt) {
-                val roll = Random.nextFloat()
-                fireLevelTarget = if (isMelkDevice) {
-                    when {
-                        roll < 0.12f -> Random.nextFloat() * 0.34f + 0.66f
-                        roll < 0.48f -> Random.nextFloat() * 0.24f + 0.08f
-                        else -> Random.nextFloat() * 0.38f + 0.30f
-                    }
-                } else {
-                    when {
-                        roll < 0.13f -> Random.nextFloat() * 0.42f + 0.56f
-                        roll < 0.34f -> Random.nextFloat() * 0.38f + 0.30f
-                        else -> Random.nextFloat() * 0.38f + 0.48f
-                    }
+    private fun ensureRunners(d: DeviceSession) {
+        if (d.flushRunner == null) d.flushRunner = Runnable { flushPendingColor(d) }
+        if (d.fireRunner == null) d.fireRunner = object : Runnable {
+            override fun run() {
+                if (d.mode != EffectMode.FIRE || !d.connected || !d.stripOn) return
+                val now=SystemClock.uptimeMillis()
+                val elapsed=if(d.fireTick==0L) 80L else (now-d.fireTick).coerceIn(1L,250L)
+                d.fireTick=now
+                if(now>=d.nextChange) {
+                    val roll=Random.nextFloat()
+                    d.targetLevel=if(d.isMelk) when { roll<.12f -> Random.nextFloat()*.34f+.66f; roll<.48f -> Random.nextFloat()*.24f+.08f; else -> Random.nextFloat()*.38f+.30f }
+                        else when { roll<.13f -> Random.nextFloat()*.42f+.56f; roll<.34f -> Random.nextFloat()*.38f+.30f; else -> Random.nextFloat()*.38f+.48f }
+                    val spread=d.spread.coerceIn(0,100)/100f
+                    d.targetHue=if(spread==0f) 0f else Random.nextFloat()*360f*spread-180f*spread
+                    d.targetSaturation=1f-Random.nextFloat()*.42f*spread
+                    d.smoothing=if(d.isMelk) { if(Random.nextFloat()<.24f) Random.nextFloat()*140f+170f else Random.nextFloat()*42f+42f }
+                        else if(Random.nextFloat()<.32f) Random.nextFloat()*250f+260f else Random.nextFloat()*48f+58f
+                    if(roll<.13f) d.flare=if(d.isMelk) Random.nextFloat()*.30f+.16f else Random.nextFloat()*.24f+.12f
+                    val interval=330L-(d.speed.coerceIn(11,20)-11)*28L
+                    d.nextChange=now+Random.nextLong((interval*.55f).toLong().coerceAtLeast(45L),(interval*1.15f).toLong().coerceAtLeast(70L))
                 }
-                // Color spread is user-controlled: 0 keeps the exact selected hue
-                // and saturation; 100 allows the full hue wheel to appear.
-                val spread = fireColorSpread.coerceIn(0, 100) / 100f
-                val hueRange = 180f * spread
-                fireHueTarget = if (spread == 0f) 0f else Random.nextFloat() * hueRange * 2f - hueRange
-                fireSaturationTarget = 1f - Random.nextFloat() * 0.42f * spread
-                // Most flickers stay sharp; occasionally the flame rolls gently
-                // into its next state, like a slower, softer tongue of fire.
-                fireSmoothingMs = if (isMelkDevice) {
-                    if (Random.nextFloat() < 0.24f) Random.nextFloat() * 140f + 170f
-                    else Random.nextFloat() * 42f + 42f
-                } else if (Random.nextFloat() < 0.32f) {
-                    Random.nextFloat() * 250f + 260f
-                } else {
-                    Random.nextFloat() * 48f + 58f
-                }
-                if (roll < 0.13f) fireFlare = if (isMelkDevice)
-                    Random.nextFloat() * 0.30f + 0.16f
-                else Random.nextFloat() * 0.24f + 0.12f
-                val interval = 330L - (speed.coerceIn(11, 20) - 11) * 28L
-                fireNextChangeAt = now + Random.nextLong((interval * 0.55f).toLong().coerceAtLeast(45L),
-                    (interval * 1.15f).toLong().coerceAtLeast(70L))
+                val blend=1f-kotlin.math.exp(-elapsed.toFloat()/d.smoothing)
+                d.level+=(d.targetLevel-d.level)*blend; d.hueShift+=(d.targetHue-d.hueShift)*(blend*.9f)
+                d.saturation+=(d.targetSaturation-d.saturation)*blend; d.flare*=kotlin.math.exp(-elapsed.toFloat()/150f)
+                val raw=(d.level+kotlin.math.sin(now/510.0).toFloat()*.045f+kotlin.math.sin(now/91.0).toFloat()*.035f+d.flare)
+                    .coerceIn(if(d.isMelk).07f else .22f,1f)
+                val value=if(d.isMelk) Math.pow(raw.toDouble(),1.65).toFloat().coerceIn(.025f,1f) else raw
+                val hsv=FloatArray(3); Color.RGBToHSV(d.red,d.green,d.blue,hsv)
+                val rgb=Color.HSVToColor(floatArrayOf((hsv[0]+d.hueShift+360f)%360f,(hsv[1]*d.saturation).coerceIn(0f,1f),value))
+                sendRGBTo(d,Color.red(rgb),Color.green(rgb),Color.blue(rgb))
+                handler.postDelayed(this,(132L-(d.speed.coerceIn(11,20)-11)*8L).coerceIn(52L,132L))
             }
-
-            val blend = 1f - kotlin.math.exp(-elapsed.toFloat() / fireSmoothingMs)
-            fireLevel += (fireLevelTarget - fireLevel) * blend
-            fireHueShift += (fireHueTarget - fireHueShift) * (blend * 0.9f)
-            fireSaturation += (fireSaturationTarget - fireSaturation) * blend
-            fireFlare *= kotlin.math.exp(-elapsed.toFloat() / 150f)
-
-            val slowWave = kotlin.math.sin(now / 510.0).toFloat() * 0.045f
-            val secondaryWave = kotlin.math.sin(now / 91.0).toFloat() * 0.035f
-            val rawLevel = (fireLevel + slowWave + secondaryWave + fireFlare)
-                .coerceIn(if (isMelkDevice) 0.07f else 0.22f, 1f)
-            val level = if (isMelkDevice) {
-                Math.pow(rawLevel.toDouble(), 1.65).toFloat().coerceIn(0.025f, 1f)
-            } else rawLevel
-
-            val hsv = FloatArray(3)
-            Color.RGBToHSV(red, green, blue, hsv)
-            val hue = (hsv[0] + fireHueShift + 360f) % 360f
-            val saturation = (hsv[1] * fireSaturation).coerceIn(0f, 1f)
-            val rgb = Color.HSVToColor(floatArrayOf(hue, saturation, level))
-            sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
-            handler.postDelayed(this, nextFireTick())
         }
-    }
-    private fun resetFireMotion() {
-        fireLevel = 0.76f
-        fireLevelTarget = 0.76f
-        fireHueShift = 0f
-        fireHueTarget = 0f
-        fireSaturation = 1f
-        fireSaturationTarget = 1f
-        fireNextChangeAt = 0L
-        fireLastTickAt = 0L
-        fireFlare = 0f
-        fireSmoothingMs = 78f
+        if (d.rainbowRunner == null) d.rainbowRunner = object : Runnable {
+            override fun run() {
+                if(d.mode!=EffectMode.RAINBOW || !d.connected || !d.stripOn) return
+                val now=SystemClock.uptimeMillis()
+                val elapsed=if(d.lastTick==0L) 50L else (now-d.lastTick).coerceIn(1L,180L); d.lastTick=now
+                val sp=d.rainbowSpeed.coerceIn(1,20); val slow=1f+.30f*((20-sp)/19f)
+                val cycle=((12500L-(sp-1)*520L).coerceAtLeast(1800L)*slow).toLong()
+                val p=if(d.isMelk) floatArrayOf(0f,17.6470588f,60f,120f,180f,240f,300f)
+                    else floatArrayOf(0f,2.3529413f,23.5294118f,120f,180f,240f,300f)
+                val hold=(360f/7f)*.60f*(if(sp==20).75f else 1f)
+                d.phase=(d.phase+elapsed.toFloat()/cycle*360f)%(360f+hold*3f)
+                var rem=d.phase; var rgb=Color.HSVToColor(floatArrayOf(p[0],1f,1f))
+                for(i in p.indices) {
+                    val n=(i+1)%p.size; val delta=((p[n]-p[i]+540f)%360f)-180f; val seg=kotlin.math.abs(delta)
+                    val a=Color.HSVToColor(floatArrayOf(p[i],1f,1f)); val b=Color.HSVToColor(floatArrayOf(p[n],1f,1f))
+                    val h=if(n<=2) hold else 0f
+                    if(rem<=seg) {
+                        val t=(rem/seg.coerceAtLeast(.001f)).coerceIn(0f,1f); val q=(1f-kotlin.math.cos(t*Math.PI.toFloat()))*.5f
+                        val r=Color.red(a)*(1-q)+Color.red(b)*q; val g=Color.green(a)*(1-q)+Color.green(b)*q; val bl=Color.blue(a)*(1-q)+Color.blue(b)*q
+                        val k=255f/maxOf(r,g,bl).coerceAtLeast(1f)
+                        rgb=Color.rgb((r*k).toInt().coerceIn(0,255),(g*k).toInt().coerceIn(0,255),(bl*k).toInt().coerceIn(0,255)); break
+                    }
+                    if(rem<=seg+h){rgb=b;break}; rem-=seg+h
+                }
+                sendRGBTo(d,Color.red(rgb),Color.green(rgb),Color.blue(rgb)); handler.postDelayed(this,20L)
+            }
+        }
     }
 
     // The selected wheel color is the fire's base hue. Flicker changes brightness
@@ -385,82 +298,63 @@ class MainActivity : Activity() {
         val connectionCard = card()
         connectionCard.addView(text("ПІДКЛЮЧЕННЯ", 11f, muted, true))
         addGap(connectionCard, 8)
-        deviceAdapter = object : ArrayAdapter<String>(
-            this, android.R.layout.simple_spinner_item, deviceNames
-        ) {
-            override fun isEnabled(position: Int): Boolean = true
-
-            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                val chosen = if (position == 0) targetAddress else melkAddress
-                return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
-                    text = deviceNames[position]
-                    textSize = 14f
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(if (chosen.equals(selectedDeviceAddress, ignoreCase = true)) Color.WHITE else Color.rgb(190, 199, 215))
-                    setPadding(dp(12), 0, dp(34), 0)
-                    includeFontPadding = false
+        deviceAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, deviceNames) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View =
+                (convertView as? TextView ?: TextView(this@MainActivity)).apply {
+                    text = "${deviceNames[position]} · ${selectedDeviceAddresses.size} обрано"
+                    textSize=14f; gravity=android.view.Gravity.CENTER_VERTICAL
+                    setTextColor(Color.WHITE); setPadding(dp(12),0,dp(34),0); includeFontPadding=false
                 }
-            }
-
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
-                    val chosen = if (position == 0) targetAddress else melkAddress
-                    val session = sessions[chosen.uppercase()]
-                    text = when {
-                        session?.connected == true && chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
-                            "${deviceNames[position]}     Підключено · обрано"
-                        session?.connected == true -> "${deviceNames[position]}     Підключено"
-                        chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
-                            "${deviceNames[position]}     Обрано"
-                        else -> deviceNames[position]
-                    }
-                    textSize = 14f
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(if (chosen.equals(selectedDeviceAddress, ignoreCase = true)) Color.WHITE else Color.rgb(190, 199, 215))
-                    setPadding(dp(16), 0, dp(12), 0)
+                val address=if(position==0) targetAddress else melkAddress
+                val row=LinearLayout(this@MainActivity).apply {
+                    orientation=LinearLayout.HORIZONTAL; gravity=android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(16),0,dp(16),0); minimumHeight=dp(52)
                     setBackgroundColor(Color.TRANSPARENT)
-                    minHeight = dp(48)
-                    includeFontPadding = false
                 }
+                row.addView(TextView(this@MainActivity).apply {
+                    text=deviceNames[position]; textSize=14f
+                    setTextColor(Color.rgb(220,226,238)); gravity=android.view.Gravity.CENTER_VERTICAL
+                },LinearLayout.LayoutParams(0,-1,1f))
+                row.addView(TextView(this@MainActivity).apply {
+                    text=if(selectedDeviceAddresses.contains(address.uppercase())) "✓" else ""
+                    textSize=22f; typeface=android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(Color.rgb(255,142,105)); gravity=android.view.Gravity.CENTER
+                },LinearLayout.LayoutParams(dp(30),-1))
+                row.setOnLongClickListener {
+                    selectedDeviceAddresses.clear(); selectedDeviceAddresses.add(address.uppercase())
+                    selectedDeviceAddress=address.uppercase()
+                    activateSelectedSession(); deviceAdapter?.notifyDataSetChanged(); true
+                }
+                return row
             }
         }
         val deviceSpinner = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
-            adapter = deviceAdapter
-            setSelection(0)
-            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            adapter=deviceAdapter; setSelection(0)
+            onItemSelectedListener=object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    selectedDeviceAddress = if (position == 1) melkAddress else targetAddress
-                    activateSelectedSession()
-                    deviceAdapter?.notifyDataSetChanged()
+                    val address=(if(position==0) targetAddress else melkAddress).uppercase()
+                    if(suppressFirstDeviceSelection) suppressFirstDeviceSelection=false
+                    else {
+                        if(!selectedDeviceAddresses.add(address)) selectedDeviceAddresses.remove(address)
+                        if(selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
+                    }
+                    selectedDeviceAddress=address
+                    activateSelectedSession(); deviceAdapter?.notifyDataSetChanged()
                 }
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
             }
-            setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
-            setPadding(0, 0, dp(28), 0)
-            dropDownWidth = resources.displayMetrics.widthPixels - dp(48)
-            dropDownHorizontalOffset = 0
-            dropDownVerticalOffset = dp(42)
-            setPopupBackgroundDrawable(rounded(Color.rgb(17, 21, 30), 16, Color.rgb(61, 70, 88)))
+            setBackground(rounded(Color.rgb(29,34,46),13,Color.rgb(61,70,88)))
+            setPadding(0,0,dp(28),0); dropDownWidth=resources.displayMetrics.widthPixels-dp(48)
+            dropDownHorizontalOffset=0; dropDownVerticalOffset=dp(42)
+            setPopupBackgroundDrawable(rounded(Color.rgb(17,21,30),16,Color.rgb(61,70,88)))
         }
         val deviceField = FrameLayout(this).apply {
-            addView(deviceSpinner, FrameLayout.LayoutParams(-1, dp(38)))
-            addView(object : View(this@MainActivity) {
-                private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.rgb(190, 199, 215)
-                    style = Paint.Style.STROKE
-                    strokeWidth = dp(2).toFloat()
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                }
-                override fun onDraw(canvas: Canvas) {
-                    super.onDraw(canvas)
-                    val cx = width / 2f
-                    val cy = height / 2f
-                    val half = dp(5).toFloat()
-                    canvas.drawLine(cx - half, cy - dp(2), cx, cy + dp(3), arrowPaint)
-                    canvas.drawLine(cx, cy + dp(3), cx + half, cy - dp(2), arrowPaint)
-                }
-            }, FrameLayout.LayoutParams(dp(36), -1, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
+            addView(deviceSpinner,FrameLayout.LayoutParams(-1,dp(38)))
+            addView(object:View(this@MainActivity){
+                private val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(190,199,215);style=Paint.Style.STROKE;strokeWidth=dp(2).toFloat();strokeCap=Paint.Cap.ROUND}
+                override fun onDraw(canvas:Canvas){val x=width/2f;val y=height/2f;val h=dp(5).toFloat();canvas.drawLine(x-h,y-dp(2),x,y+dp(3),p);canvas.drawLine(x,y+dp(3),x+h,y-dp(2),p)}
+            },FrameLayout.LayoutParams(dp(36),-1,android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(38)))
         addGap(connectionCard, 8)
@@ -526,7 +420,7 @@ class MainActivity : Activity() {
             green = Color.green(selectedColor)
             blue = Color.blue(selectedColor)
             updatePreview()
-            if (connected && activeMode == EffectMode.NONE) sendCurrentColor()
+            selectedSessions().forEach { it.red=red; it.green=green; it.blue=blue }; if (selectedSessions().all { it.mode == EffectMode.NONE }) sendCurrentColor()
         }
         val wheelSize = dp(168)
         wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
@@ -564,22 +458,16 @@ class MainActivity : Activity() {
 
         addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
             brightness = it
-            if (activeMode == EffectMode.NONE) sendCurrentColor()
+            selectedSessions().forEach { it.brightness=brightness }; if (selectedSessions().all { it.mode == EffectMode.NONE }) sendCurrentColor()
         }
         root.addView(colorCard)
         addGap(root, 12)
         root.addView(pageHost)
         addModernSlider(tuningCard, "Швидкість вогню", speed - 10, 10, "/10") {
-            speed = (it + 10).coerceIn(11, 20)
+            speed = (it + 10).coerceIn(11, 20); selectedSessions().forEach { it.speed=speed }
         }
         addModernSlider(tuningCard, "Розкид кольорів вогню", fireColorSpread, 100, "%", 2) {
-            fireColorSpread = it.coerceIn(0, 100)
-            if (fireEnabled) {
-                fireHueTarget = 0f
-                fireSaturationTarget = 1f
-                fireHueShift *= fireColorSpread / 100f
-                fireSaturation = 1f - (1f - fireSaturation) * fireColorSpread / 100f
-            }
+            fireColorSpread = it.coerceIn(0, 100); selectedSessions().forEach { d -> d.spread=fireColorSpread }
         }
         addGap(tuningCard, 8)
         fireButton = actionButton("Увімкнути вогонь", true) { toggleFire() }
@@ -597,7 +485,7 @@ class MainActivity : Activity() {
         rainbowTuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
         addGap(rainbowTuningCard, 7)
         addModernSlider(rainbowTuningCard, "Швидкість", rainbowSpeed, 20, "/20", 8) {
-            rainbowSpeed = it.coerceIn(1, 20)
+            rainbowSpeed = it.coerceIn(1, 20); selectedSessions().forEach { it.rainbowSpeed=rainbowSpeed }
         }
         rainbowButton = actionButton("Увімкнути веселку", true) { toggleRainbow() }
         rainbowTuningCard.addView(rainbowButton, LinearLayout.LayoutParams(-1, dp(40)))
@@ -816,23 +704,28 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun selectedSessions(): List<DeviceSession> =
+        selectedDeviceAddresses.mapNotNull { sessions[it] }.filter { it.connected && it.characteristic != null }
+
     private fun activateSelectedSession() {
-        val session = sessions[selectedDeviceAddress.uppercase()]
-        gatt = session?.gatt
-        characteristic = session?.characteristic
-        notifyCharacteristic = session?.notifyCharacteristic
-        connected = session?.connected == true
-        isMelkDevice = session?.isMelk == true
-        deviceLayout = if (isMelkDevice) DeviceLayout.SEQUENTIAL else DeviceLayout.SIMULTANEOUS
-        stripOn = session?.stripOn ?: false
-        stripStateKnown = session?.stripStateKnown ?: false
-        bulbButton.setLit(if (connected && stripStateKnown) stripOn else null)
-        status.text = if (!connected) {
-            if (session?.gatt != null) "Підключаюся до обраного контролера..."
-            else "Обраний контролер ще не підключений"
-        } else if (stripStateKnown) {
-            if (stripOn) "Підключено · стрічка увімкнена" else "Підключено · стрічка вимкнена"
-        } else "Підключено · стан стрічки перевіряється"
+        val d=sessions[selectedDeviceAddress.uppercase()]
+        gatt=d?.gatt; characteristic=d?.characteristic; notifyCharacteristic=d?.notifyCharacteristic
+        connected=d?.connected==true; isMelkDevice=d?.isMelk==true
+        deviceLayout=if(isMelkDevice) DeviceLayout.SEQUENTIAL else DeviceLayout.SIMULTANEOUS
+        if(d!=null){red=d.red;green=d.green;blue=d.blue;brightness=d.brightness;speed=d.speed;fireColorSpread=d.spread;rainbowSpeed=d.rainbowSpeed}
+        val chosen=selectedSessions()
+        val powerStates=chosen.map{if(it.stripStateKnown) it.stripOn else null}.distinct()
+        bulbButton.setLit(if(chosen.isEmpty() || powerStates.size!=1) null else powerStates.first())
+        val modes=chosen.map{it.mode}.distinct()
+        fireButton.text=when {chosen.isEmpty()||modes.size!=1->"Змішаний стан";modes.first()==EffectMode.FIRE->"Вимкнути вогонь";else->"Увімкнути вогонь"}
+        rainbowButton.text=when {chosen.isEmpty()||modes.size!=1->"Змішаний стан";modes.first()==EffectMode.RAINBOW->"Вимкнути веселку";else->"Увімкнути веселку"}
+        status.text=when {
+            chosen.isEmpty()->"Обери підключений пристрій"
+            chosen.size>1->"Обрано ${chosen.size} · керування групою"
+            !d!!.stripStateKnown->"Підключено · стан стрічки невідомий"
+            d.stripOn->"Підключено · стрічка увімкнена"
+            else->"Підключено · стрічка вимкнена"
+        }
         deviceAdapter?.notifyDataSetChanged()
     }
 
@@ -996,44 +889,43 @@ class MainActivity : Activity() {
     }
 
     private fun updatePowerStateFromPacket(session: DeviceSession, packet: ByteArray?) {
-        if (packet == null || packet.size < 4 || packet[0] != 0x7E.toByte()) return
-        if (packet[2] != 0x04.toByte()) return
-        val isOn = when (packet[3].toInt() and 0xFF) {
-            0xF0, 0xFF -> true
-            0x00 -> false
-            else -> return
-        }
-        session.stripOn = isOn
-        session.stripStateKnown = true
-        runOnUiThread {
-            if (session.address != selectedDeviceAddress.uppercase()) {
-                deviceAdapter?.notifyDataSetChanged()
-                return@runOnUiThread
-            }
-            handler.removeCallbacks(powerStateTimeout)
-            stripOn = isOn
-            stripStateKnown = true
-            bulbButton.setLit(isOn)
-            if (!isOn) stopActiveEffect()
-            status.text = if (isOn) "Підключено · стрічка увімкнена"
-                else "Підключено · стрічка вимкнена"
+        if(packet==null||packet.size<4||packet[0]!=0x7E.toByte()||packet[2]!=0x04.toByte())return
+        val on=when(packet[3].toInt() and 255){0xF0,0xFF->true;0x00->false;else->return}
+        session.stripOn=on;session.stripStateKnown=true
+        if(!on) stopActiveEffect(session)
+        runOnUiThread { if(session.address==selectedDeviceAddress.uppercase()) activateSelectedSession() }
+    }
+
+    private fun sendPowerCommand(session: DeviceSession,on:Boolean) {
+        val packet=if(on) byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
+            else byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return,session.characteristic ?: return,packet)
+    }
+
+    private fun sendRGBTo(d:DeviceSession,r:Int,g:Int,b:Int) {
+        if(!d.connected||d.characteristic==null||d.gatt==null)return
+        val factor=d.brightness/100.0
+        val rr=(r*factor).toInt().coerceIn(0,255);val gg=(g*factor).toInt().coerceIn(0,255);val bb=(b*factor).toInt().coerceIn(0,255)
+        d.pending=if(d.isMelk) byteArrayOf(0x7E,0,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0,0xEF.toByte())
+            else byteArrayOf(0x7E,7,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0x10,0xEF.toByte())
+        ensureRunners(d)
+        if(!d.flushQueued) {
+            d.flushQueued=true
+            val interval=if(d.isMelk)100L else if(d.mode==EffectMode.RAINBOW)30L else 50L
+            handler.postDelayed(d.flushRunner!!,(interval-(SystemClock.uptimeMillis()-d.lastWrite)).coerceAtLeast(0L))
         }
     }
 
-    private fun sendPowerCommand(on: Boolean) {
-        val packet = if (on) {
-            byteArrayOf(0x7E, 0x04, 0x04, 0xF0.toByte(), 0x00, 0x01, 0xFF.toByte(), 0x00, 0xEF.toByte())
-        } else {
-            byteArrayOf(0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
-        }
-        writeBlePacket(packet)
+    private fun flushPendingColor(d:DeviceSession) {
+        d.flushQueued=false
+        val packet=d.pending ?: return;d.pending=null
+        val g=d.gatt ?: return;val ch=d.characteristic ?: return
+        writeBlePacketTo(g,ch,packet);d.lastWrite=SystemClock.uptimeMillis()
+        if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk)100L else 35L)}
     }
 
-    private fun writeBlePacket(packet: ByteArray) {
-        val g = gatt ?: return
-        val char = characteristic ?: return
-        writeBlePacketTo(g, char, packet)
-    }
+    private fun sendCurrentColor() { selectedSessions().forEach{sendRGBTo(it,it.red,it.green,it.blue)} }
+    private fun sendRGB(r:Int,g:Int,b:Int) { selectedSessions().forEach{sendRGBTo(it,r,g,b)} }
 
     private fun writeBlePacketTo(g: BluetoothGatt, char: BluetoothGattCharacteristic, packet: ByteArray) {
         try {
@@ -1115,126 +1007,56 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun stopActiveEffect(d:DeviceSession) {
+        d.fireRunner?.let{handler.removeCallbacks(it)};d.rainbowRunner?.let{handler.removeCallbacks(it)}
+        d.mode=EffectMode.NONE
+    }
+    private fun stopActiveEffect() { selectedSessions().forEach{stopActiveEffect(it)};refreshEffectButtons() }
+
     private fun toggleStrip() {
-        if (!connected) {
-            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
-            return
+        val targets=selectedSessions()
+        if(targets.isEmpty()){Toast.makeText(this,"Спочатку підключи пристрій",Toast.LENGTH_SHORT).show();return}
+        val turnOff=targets.all{it.stripStateKnown&&it.stripOn}
+        targets.forEach { d ->
+            if(turnOff){stopActiveEffect(d);d.stripOn=false;d.stripStateKnown=true;d.pending=null;d.flushQueued=false;d.flushRunner?.let{handler.removeCallbacks(it)};sendPowerCommand(d,false)}
+            else {d.stripOn=true;d.stripStateKnown=true;sendPowerCommand(d,true);handler.postDelayed({if(d.connected&&d.stripOn&&d.mode==EffectMode.NONE)sendRGBTo(d,d.red,d.green,d.blue)},180L)}
         }
-        if (!stripStateKnown) {
-            stripOn = true
-            stripStateKnown = true
-            sendPowerCommand(true)
-            bulbButton.setLit(true)
-            handler.postDelayed({
-                if (!connected || !stripOn) return@postDelayed
-                if (fireEnabled) {
-                    resetFireMotion()
-                    handler.removeCallbacks(fireTask)
-                    fireTask.run()
-                } else {
-                    sendCurrentColor()
-                }
-            }, 180L)
-            status.text = "Команда увімкнення надіслана"
-            return
-        }
-        stripOn = !stripOn
-        if (!stripOn) {
-            // Stop producers and discard any RGB packet queued before power-off.
-            stopActiveEffect()
-            pendingPacket = null
-            handler.removeCallbacks(colorFlushTask)
-            writeScheduled = false
-            sendPowerCommand(false)
-            bulbButton.setLit(stripOn)
-        } else {
-            bulbButton.setLit(stripOn)
-            // Wake the controller with its dedicated power command before sending RGB.
-            sendPowerCommand(true)
-            handler.postDelayed({
-                if (!connected || !stripOn) return@postDelayed
-                if (fireEnabled) {
-                    resetFireMotion()
-                    handler.removeCallbacks(fireTask)
-                    fireTask.run()
-                } else {
-                    sendCurrentColor()
-                }
-            }, 180L)
-        }
+        activateSelectedSession()
     }
 
-    private fun stopActiveEffect() {
-        handler.removeCallbacks(fireTask)
-        handler.removeCallbacks(rainbowTask)
-        fireEnabled = false
-        activeMode = EffectMode.NONE
-        if (::fireButton.isInitialized) fireButton.text = "Увімкнути вогонь"
-        if (::rainbowButton.isInitialized) rainbowButton.text = "Увімкнути веселку"
+    private fun refreshEffectButtons() {
+        val ds=selectedSessions();val modes=ds.map{it.mode}.distinct()
+        if(::fireButton.isInitialized) fireButton.text=if(modes.size!=1||ds.isEmpty())"Змішаний стан" else if(modes[0]==EffectMode.FIRE)"Вимкнути вогонь" else "Увімкнути вогонь"
+        if(::rainbowButton.isInitialized) rainbowButton.text=if(modes.size!=1||ds.isEmpty())"Змішаний стан" else if(modes[0]==EffectMode.RAINBOW)"Вимкнути веселку" else "Увімкнути веселку"
     }
 
     private fun toggleFire() {
-        if (!connected) {
-            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
-            return
+        val ds=selectedSessions();if(ds.isEmpty()){Toast.makeText(this,"Спочатку підключи пристрій",Toast.LENGTH_SHORT).show();return}
+        val stop=ds.all{it.mode==EffectMode.FIRE}
+        ds.forEach{d->
+            if(stop){stopActiveEffect(d);sendRGBTo(d,d.red,d.green,d.blue)}
+            else{
+                stopActiveEffect(d);d.mode=EffectMode.FIRE
+                if(!d.stripOn){d.stripOn=true;d.stripStateKnown=true;sendPowerCommand(d,true)}
+                resetFireMotion(d);ensureRunners(d)
+                if(d.stripOn)handler.postDelayed({d.fireRunner?.run()},if(d.stripStateKnown)180L else 0L)
+            }
         }
-        val wasStripOff = !stripStateKnown || !stripOn
-        if (wasStripOff) {
-            stripOn = true
-            stripStateKnown = true
-            bulbButton.setLit(true)
-            sendPowerCommand(true)
-        }
-        if (activeMode == EffectMode.FIRE) {
-            stopActiveEffect()
-            sendCurrentColor()
-            return
-        }
-        stopActiveEffect()
-        activeMode = EffectMode.FIRE
-        fireEnabled = true
-        fireButton.text = "Вимкнути вогонь"
-        rainbowButton.text = "Увімкнути веселку"
-        resetFireMotion()
-        if (wasStripOff) {
-            handler.postDelayed({
-                if (activeMode == EffectMode.FIRE && connected && stripOn) fireTask.run()
-            }, 180L)
-        } else fireTask.run()
+        refreshEffectButtons();activateSelectedSession()
     }
 
     private fun toggleRainbow() {
-        if (!connected) {
-            Toast.makeText(this, "Спочатку підключи контролер", Toast.LENGTH_SHORT).show()
-            return
+        val ds=selectedSessions();if(ds.isEmpty()){Toast.makeText(this,"Спочатку підключи пристрій",Toast.LENGTH_SHORT).show();return}
+        val stop=ds.all{it.mode==EffectMode.RAINBOW}
+        ds.forEach{d->
+            if(stop){stopActiveEffect(d);sendRGBTo(d,d.red,d.green,d.blue)}
+            else{
+                stopActiveEffect(d);d.mode=EffectMode.RAINBOW;d.phase=0f;d.lastTick=0L
+                if(!d.stripOn){d.stripOn=true;d.stripStateKnown=true;sendPowerCommand(d,true)}
+                ensureRunners(d);handler.postDelayed({d.rainbowRunner?.run()},180L)
+            }
         }
-        val wasStripOff = !stripStateKnown || !stripOn
-        if (wasStripOff) {
-            stripOn = true
-            stripStateKnown = true
-            bulbButton.setLit(true)
-            sendPowerCommand(true)
-        }
-        if (activeMode == EffectMode.RAINBOW) {
-            stopActiveEffect()
-            sendCurrentColor()
-            return
-        }
-        stopActiveEffect()
-        activeMode = EffectMode.RAINBOW
-        fireEnabled = false
-        fireButton.text = "Увімкнути вогонь"
-        rainbowButton.text = "Вимкнути веселку"
-        rainbowPhase = 0f
-        rainbowLastTickAt = 0L
-        if (deviceLayout == DeviceLayout.SEQUENTIAL) {
-            // Reserved for the future sequential-panel effect implementation.
-        }
-        if (wasStripOff) {
-            handler.postDelayed({
-                if (activeMode == EffectMode.RAINBOW && connected && stripOn) rainbowTask.run()
-            }, 180L)
-        } else rainbowTask.run()
+        refreshEffectButtons();activateSelectedSession()
     }
 
     private fun stopFireForManual() {
@@ -1248,44 +1070,26 @@ class MainActivity : Activity() {
 
     private fun closeGattConnection() {
         handler.removeCallbacks(powerStateTimeout)
-        sessions.values.forEach { session ->
-            val oldGatt = session.gatt
-            session.gatt = null
-            session.characteristic = null
-            session.notifyCharacteristic = null
-            session.connected = false
-            session.stripOn = false
-            session.stripStateKnown = false
-            try { oldGatt?.disconnect(); oldGatt?.close() } catch (_: Exception) {}
+        sessions.values.forEach { d ->
+            stopActiveEffect(d)
+            val old=d.gatt;d.gatt=null;d.characteristic=null;d.notifyCharacteristic=null;d.connected=false
+            d.stripOn=false;d.stripStateKnown=false
+            try{old?.disconnect();old?.close()}catch(_:Exception){}
         }
-        gatt = null
-        connected = false
-        characteristic = null
-        notifyCharacteristic = null
+        gatt=null;connected=false;characteristic=null;notifyCharacteristic=null
     }
 
     private fun disconnect() {
-        stopScan()
-        stopActiveEffect()
-        handler.removeCallbacks(powerStateTimeout)
-        closeGattConnection()
-        sessions.clear()
-        pendingPacket = null
-        writeScheduled = false
-        stripStateKnown = false
-        stripOn = false
-
-        status.text = "Статус: не підключено"
-        deviceAdapter?.notifyDataSetChanged()
-        stopActiveEffect()
-        bulbButton.setLit(null)
+        stopScan();closeGattConnection();sessions.clear();selectedDeviceAddresses.clear()
+        selectedDeviceAddresses.add(targetAddress.uppercase());selectedDeviceAddress=targetAddress.uppercase()
+        status.text="Статус: не підключено";deviceAdapter?.notifyDataSetChanged();bulbButton.setLit(null)
+        fireButton.text="Увімкнути вогонь";rainbowButton.text="Увімкнути веселку"
     }
 
     override fun onDestroy() {
         // Release the BLE peripheral when the Activity is closed. Leaving a GATT
         // client open can keep the strip connected and invisible to other scanners.
         stopScan()
-        stopActiveEffect()
         handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
         try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
