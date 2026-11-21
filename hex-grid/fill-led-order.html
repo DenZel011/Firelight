@@ -51,7 +51,7 @@ button.primary{background:var(--active);color:#241a0b;border-color:var(--active)
   const numbered=new Map(order.map((v,i)=>[key(v.cell,v.pos),i+1]));
   for(const id of ids){
    const r=Math.floor(id/cols),c=id%cols,x=m+c*dx+(r%2)*dx/2,y=m+r*dy;
-   const points=Array.from({length:6},(_,i)=>{const a=(-90+i*60)*Math.PI/180;return [x+R*Math.cos(a),y+R*Math.sin(a)]});
+   const ledRadius=R*0.58;const points=Array.from({length:6},(_,i)=>{const a=(-90+i*60)*Math.PI/180;return [x+ledRadius*Math.cos(a),y+ledRadius*Math.sin(a)]});
    const polygon=el('polygon',{points:points.map(p=>p.join(',')).join(' ')});svg.append(polygon);
    const positions=[[x,y],...points];
    positions.forEach(([px,py],pos)=>{
