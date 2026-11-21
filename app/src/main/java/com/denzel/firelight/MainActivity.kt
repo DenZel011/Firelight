@@ -781,7 +781,7 @@ class MainActivity : Activity() {
                         notifyCharacteristic = null
                         stripStateKnown = false
                         stripOn = false
-                        stopActiveEffect()
+                        stopActiveEffect(session)
                         bulbButton.setLit(null)
                         status.text = "Обраний контролер від'єднано"
                     }
@@ -956,57 +956,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun sendCurrentColor() {
-        sendRGB(red, green, blue)
-    }
-
-    private fun sendRGB(r: Int, g: Int, b: Int) {
-        if (characteristic == null || gatt == null || !connected) return
-        val factor = brightness / 100.0
-        val rr = (r * factor).toInt().coerceIn(0, 255)
-        val gg = (g * factor).toInt().coerceIn(0, 255)
-        val bb = (b * factor).toInt().coerceIn(0, 255)
-
-        pendingPacket = if (isMelkDevice) {
-            byteArrayOf(
-                0x7E, 0x00, 0x05, 0x03,
-                rr.toByte(), gg.toByte(), bb.toByte(),
-                0x00, 0xEF.toByte()
-            )
-        } else {
-            byteArrayOf(
-                0x7E, 0x07, 0x05, 0x03,
-                rr.toByte(), gg.toByte(), bb.toByte(),
-                0x10, 0xEF.toByte()
-            )
-        }
-
-        if (!writeScheduled) {
-            writeScheduled = true
-            val interval = if (isMelkDevice) 100L
-                else if (activeMode == EffectMode.RAINBOW) 30L else 50L
-            val wait = (interval - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
-            handler.postDelayed(colorFlushTask, wait)
-        }
-    }
-
-    private fun flushPendingColor() {
-        writeScheduled = false
-        val packet = pendingPacket ?: return
-        pendingPacket = null
-        val g = gatt ?: return
-        val char = characteristic ?: return
-
-        writeBlePacket(packet)
-
-        if (pendingPacket != null && !writeScheduled) {
-            writeScheduled = true
-            val interval = if (isMelkDevice) 100L
-                else if (activeMode == EffectMode.RAINBOW) 30L else 50L
-            handler.postDelayed(colorFlushTask, interval)
-        }
-    }
-
     private fun stopActiveEffect(d:DeviceSession) {
         d.fireRunner?.let{handler.removeCallbacks(it)};d.rainbowRunner?.let{handler.removeCallbacks(it)}
         d.mode=EffectMode.NONE
@@ -1060,7 +1009,8 @@ class MainActivity : Activity() {
     }
 
     private fun stopFireForManual() {
-        if (activeMode == EffectMode.FIRE) stopActiveEffect()
+        selectedSessions().filter { it.mode == EffectMode.FIRE }.forEach { stopActiveEffect(it) }
+        refreshEffectButtons()
     }
 
     private fun updatePreview() {
