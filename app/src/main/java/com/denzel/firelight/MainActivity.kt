@@ -106,21 +106,27 @@ class MainActivity : Activity() {
             val slowEndFactor = 1f + 0.30f * ((20 - speed) / 19f)
             val baseCycleMs = ((12500L - (speed - 1) * 520L).coerceAtLeast(1800L) * slowEndFactor).toLong()
 
-            // Warm colors: red (0°), orange (12°), yellow (30°).
-            // Blend adjacent RGB colors instead of switching hue values abruptly.
-            val palette = floatArrayOf(0f, 12f, 30f, 120f, 180f, 240f, 280f)
-            // Keep all three warm-color pauses equal; shorten them only at max speed.
+            // Exact hues matching the user's reference RGB colors:
+            // orange (255,10,0), yellow (255,100,0), purple (255,0,255).
+            val palette = floatArrayOf(0f, 2.3529413f, 23.5294118f, 120f, 180f, 240f, 300f)
+            // Equal warm-color pauses; shorten all three only at max speed.
             val pauseScale = if (speed == 20) 0.75f else 1f
-            val redHold = 0.60f * pauseScale
-            val orangeHold = 0.60f * pauseScale
-            val yellowHold = 0.60f * pauseScale
-            val totalPhase = 7f + redHold + orangeHold + yellowHold
-            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 7f) % totalPhase
+            val holdAngle = (360f / 7f) * 0.60f * pauseScale
+            val redHold = holdAngle
+            val orangeHold = holdAngle
+            val yellowHold = holdAngle
+            val totalPhase = 360f + redHold + orangeHold + yellowHold
+            // Keep the previous overall rainbow timing while measuring progress
+            // in hue degrees. Each transition now takes time proportional to
+            // its angular distance, so hue moves at a consistent average rate.
+            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * (360f / 7f)) % totalPhase
 
             var remaining = rainbowPhase
             var rgb = Color.HSVToColor(floatArrayOf(palette[0], 1f, 1f))
             for (i in palette.indices) {
                 val next = (i + 1) % palette.size
+                val delta = ((palette[next] - palette[i] + 540f) % 360f) - 180f
+                val segmentAngle = kotlin.math.abs(delta)
                 val hold = when (next) {
                     0 -> redHold
                     1 -> orangeHold
@@ -129,11 +135,11 @@ class MainActivity : Activity() {
                 }
                 val from = Color.HSVToColor(floatArrayOf(palette[i], 1f, 1f))
                 val to = Color.HSVToColor(floatArrayOf(palette[next], 1f, 1f))
-                if (remaining <= 1f) {
-                    // Crossfade the old and new RGB colors with cosine easing.
-                    // Both colors contribute throughout the transition, so no
-                    // channel is abruptly switched off when the next one starts.
-                    val t = remaining.coerceIn(0f, 1f)
+                if (remaining <= segmentAngle) {
+                    // Cosine-eased RGB crossfade avoids abrupt channel switching.
+                    // Transition duration scales with hue distance, keeping the
+                    // same average hue speed on short and long color intervals.
+                    val t = (remaining / segmentAngle.coerceAtLeast(0.001f)).coerceIn(0f, 1f)
                     val blend = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
                     val r = Color.red(from) * (1f - blend) + Color.red(to) * blend
                     val g = Color.green(from) * (1f - blend) + Color.green(to) * blend
@@ -147,11 +153,11 @@ class MainActivity : Activity() {
                     )
                     break
                 }
-                if (remaining <= 1f + hold) {
+                if (remaining <= segmentAngle + hold) {
                     rgb = to
                     break
                 }
-                remaining -= 1f + hold
+                remaining -= segmentAngle + hold
             }
 
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
