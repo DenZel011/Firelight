@@ -97,19 +97,44 @@ class MainActivity : Activity() {
         override fun run() {
             if (activeMode != EffectMode.RAINBOW || !connected || !stripOn) return
             val now = SystemClock.uptimeMillis()
-            val elapsed = if (rainbowLastTickAt == 0L) 80L else (now - rainbowLastTickAt).coerceIn(1L, 250L)
+            val elapsed = if (rainbowLastTickAt == 0L) 50L else (now - rainbowLastTickAt).coerceIn(1L, 180L)
             rainbowLastTickAt = now
-            val cycleMs = (12500L - (rainbowSpeed.coerceIn(1, 20) - 1) * 520L).coerceAtLeast(1800L)
-            rainbowPhase = (rainbowPhase + elapsed.toFloat() / cycleMs.toFloat() * 7f) % 7f
+
+            // Speed 1 is intentionally 30% slower; the adjustment fades out
+            // smoothly toward the fastest setting without changing the slider range.
+            val speed = rainbowSpeed.coerceIn(1, 20)
+            val slowEndFactor = 1f + 0.30f * ((20 - speed) / 19f)
+            val baseCycleMs = ((12500L - (speed - 1) * 520L).coerceAtLeast(1800L) * slowEndFactor).toLong()
+
+            // Give red, orange and yellow a short speed-scaled dwell after each
+            // smooth transition. Other colors remain continuously in motion.
             val palette = floatArrayOf(0f, 30f, 60f, 120f, 180f, 240f, 280f)
-            val index = kotlin.math.floor(rainbowPhase).toInt() % palette.size
-            val next = (index + 1) % palette.size
-            val fraction = rainbowPhase - kotlin.math.floor(rainbowPhase)
-            val delta = ((palette[next] - palette[index] + 540f) % 360f) - 180f
-            val hue = (palette[index] + delta * fraction + 360f) % 360f
+            val warmColorHold = 0.30f
+            val totalPhase = 7f + warmColorHold * 3f
+            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 7f) % totalPhase
+
+            var remaining = rainbowPhase
+            var hue = palette[0]
+            for (i in palette.indices) {
+                val next = (i + 1) % palette.size
+                val delta = ((palette[next] - palette[i] + 540f) % 360f) - 180f
+                val hold = if (next <= 2) warmColorHold else 0f
+                if (remaining <= 1f) {
+                    hue = (palette[i] + delta * remaining + 360f) % 360f
+                    break
+                }
+                if (remaining <= 1f + hold) {
+                    hue = palette[next]
+                    break
+                }
+                remaining -= 1f + hold
+            }
+
             val rgb = Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
-            handler.postDelayed(this, 80L)
+            // Update more frequently; BLE output is safely coalesced to its
+            // supported write interval in flushPendingColor().
+            handler.postDelayed(this, 50L)
         }
     }
 
@@ -382,8 +407,6 @@ class MainActivity : Activity() {
         }
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
-        root.addView(pageHost)
-
         val colorCard = card().apply {
             setPadding(dp(12), dp(2), dp(12), dp(6))
             clipChildren = false
@@ -419,9 +442,8 @@ class MainActivity : Activity() {
             red = Color.red(selectedColor)
             green = Color.green(selectedColor)
             blue = Color.blue(selectedColor)
-            stopFireForManual()
             updatePreview()
-            if (connected) sendCurrentColor()
+            if (connected && activeMode == EffectMode.NONE) sendCurrentColor()
         }
         val wheelSize = dp(168)
         wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
@@ -432,9 +454,6 @@ class MainActivity : Activity() {
             setPadding(0, dp(5), 0, 0)
         }
         colorCard.addView(preview)
-        firePage.addView(colorCard)
-        addGap(firePage, 12)
-
         val tuningCard = card().apply {
             setPadding(dp(12), dp(12), dp(12), dp(6))
         }
@@ -462,8 +481,11 @@ class MainActivity : Activity() {
 
         addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
             brightness = it
-            if (!fireEnabled) sendCurrentColor()
+            if (activeMode == EffectMode.NONE) sendCurrentColor()
         }
+        root.addView(colorCard)
+        addGap(root, 12)
+        root.addView(pageHost)
         addModernSlider(tuningCard, "Швидкість вогню", speed - 10, 10, "/10") {
             speed = (it + 10).coerceIn(11, 20)
         }
