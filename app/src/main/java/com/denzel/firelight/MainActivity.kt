@@ -473,8 +473,6 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(2), 0, dp(8))
         }
-        scenePage.addView(text("СЦЕНИ", 11f, muted, true))
-        addGap(scenePage, 12)
 
         val sceneNames = listOf("Заповнення", "Схід сонця")
         val sceneSymbols = listOf("▥", "☀")
@@ -484,27 +482,33 @@ class MainActivity : Activity() {
         )
         var selectedSceneIndex = 0
 
+        // Static outer card and heading. Only the content area below can move.
         val sceneCard = card().apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(20), dp(18), dp(20))
+            clipChildren = true
+            clipToPadding = true
+        }
+        sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
+        addGap(sceneCard, 14)
+
+        val sceneContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER
+            isClickable = true
             clipChildren = false
             clipToPadding = false
         }
         val sceneSymbol = text(sceneSymbols[0], 48f, Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        sceneCard.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
-        addGap(sceneCard, 12)
+        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
+        addGap(sceneContent, 12)
         val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        sceneCard.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
-        addGap(sceneCard, 22)
-        val scenePosition = text("01 / 02", 12f, Color.rgb(255, 142, 105), true).apply {
-            gravity = android.view.Gravity.CENTER
-        }
-        sceneCard.addView(scenePosition)
-
+        sceneContent.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
+        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f))
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun applySceneColor(index: Int) {
@@ -533,20 +537,19 @@ class MainActivity : Activity() {
         fun showScene(nextIndex: Int, swipeLeft: Boolean) {
             selectedSceneIndex = (nextIndex + sceneNames.size) % sceneNames.size
             val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
-            sceneCard.animate().cancel()
-            sceneCard.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
+            sceneContent.animate().cancel()
+            sceneContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
                 sceneSymbol.text = sceneSymbols[selectedSceneIndex]
                 sceneName.text = sceneNames[selectedSceneIndex]
-                scenePosition.text = "%02d / %02d".format(selectedSceneIndex + 1, sceneNames.size)
-                sceneCard.translationX = -exitX
-                sceneCard.animate().translationX(0f).alpha(1f).setDuration(190L).start()
+                sceneContent.translationX = -exitX
+                sceneContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
                 applySceneColor(selectedSceneIndex)
             }.start()
         }
 
         var sceneTouchStartX = 0f
         var sceneTouchStartY = 0f
-        sceneCard.setOnTouchListener { _, event ->
+        sceneContent.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     sceneTouchStartX = event.x
