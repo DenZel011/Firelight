@@ -469,8 +469,86 @@ class MainActivity : Activity() {
         addGap(rainbowTuningCard, 4)
         rainbowPage.addView(rainbowTuningCard)
 
-        // Bottom navigation stays visible on every page. Only the first page
-        // is implemented for now; the remaining tabs are intentionally blank.
+        val scenePage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(8))
+        }
+        val sceneCard = card().apply {
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
+        addGap(sceneCard, 18)
+
+        val sceneNames = listOf("Заповнення", "Схід сонця")
+        val sceneDescriptions = listOf(
+            "Світлодіоди поступово загоряються один за одним.",
+            "Тепле світло плавно набирає яскравість, наче ранковий світанок."
+        )
+        val sceneSymbols = listOf("▥", "☀")
+        var selectedSceneIndex = 0
+        val sceneSymbol = text(sceneSymbols[0], 48f, Color.rgb(255, 142, 105), true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneCard.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
+        addGap(sceneCard, 8)
+        val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneCard.addView(sceneName)
+        addGap(sceneCard, 8)
+        val sceneDescription = text(sceneDescriptions[0], 14f, muted, false).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneCard.addView(sceneDescription, LinearLayout.LayoutParams(-1, -2))
+        addGap(sceneCard, 20)
+        val scenePosition = text("01 / 02", 12f, Color.rgb(255, 142, 105), true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneCard.addView(scenePosition)
+        scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        val sceneHint = text("Гортай вгору або вниз, щоб перемикати сцени", 12f, muted, false).apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(8), dp(12), dp(8), dp(4))
+        }
+        scenePage.addView(sceneHint)
+
+        fun showScene(nextIndex: Int, swipeUp: Boolean) {
+            selectedSceneIndex = (nextIndex + sceneNames.size) % sceneNames.size
+            val exitY = if (swipeUp) -dp(18).toFloat() else dp(18).toFloat()
+            sceneCard.animate().cancel()
+            sceneCard.animate().translationY(exitY).alpha(0f).setDuration(100L).withEndAction {
+                sceneSymbol.text = sceneSymbols[selectedSceneIndex]
+                sceneName.text = sceneNames[selectedSceneIndex]
+                sceneDescription.text = sceneDescriptions[selectedSceneIndex]
+                scenePosition.text = "%02d / %02d".format(selectedSceneIndex + 1, sceneNames.size)
+                sceneCard.translationY = -exitY
+                sceneCard.animate().translationY(0f).alpha(1f).setDuration(160L).start()
+            }.start()
+        }
+
+        var sceneTouchStartY = 0f
+        sceneCard.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    sceneTouchStartY = event.y
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val delta = event.y - sceneTouchStartY
+                    if (kotlin.math.abs(delta) >= dp(45)) {
+                        if (delta < 0f) showScene(selectedSceneIndex + 1, true)
+                        else showScene(selectedSceneIndex - 1, false)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> true
+                else -> true
+            }
+        }
+
+        // The bottom navigation stays visible; shared controls remain outside pageHost.
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
@@ -483,10 +561,10 @@ class MainActivity : Activity() {
 
         fun selectTab(index: Int) {
             pageHost.removeAllViews()
-            if (index == 0) {
-                pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
-            } else if (index == 2) {
-                pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
+            when (index) {
+                0 -> pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
+                2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
+                3 -> pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
             }
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
