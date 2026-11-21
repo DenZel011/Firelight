@@ -52,8 +52,7 @@ class MainActivity : Activity() {
     private val discoveredDevices = linkedMapOf<String, DiscoveredBle>()
     private var discoverAllScanning = false
     private var refreshDiscoveryDialog: (() -> Unit)? = null
-    private val selectedDeviceAddresses = linkedSetOf("BE:27:8A:00:73:DE")
-    private var suppressFirstDeviceSelection = true
+    private val selectedDeviceAddresses = linkedSetOf<String>()
 
     private var connected = false
     private var fireEnabled = false
@@ -73,7 +72,7 @@ class MainActivity : Activity() {
     private var drawerOverlay: FrameLayout? = null
     private var drawerPanel: LinearLayout? = null
     private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
-    private var selectedDeviceAddress = "BE:27:8A:00:73:DE"
+    private var selectedDeviceAddress = ""
 
     private var red = 255
     private var green = 92
@@ -230,8 +229,8 @@ class MainActivity : Activity() {
             managedDeviceAddresses.addAll(saved.map { it.uppercase() })
             if (managedDeviceAddresses.isEmpty()) managedDeviceAddresses.add(targetAddress.uppercase())
         }
-        selectedDeviceAddresses.retainAll(managedDeviceAddresses)
-        selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
+        selectedDeviceAddresses.clear()
+        selectedDeviceAddress = ""
         requestBluetoothPermissions()
         stripStateKnown = false
         stripOn = false
@@ -487,7 +486,7 @@ class MainActivity : Activity() {
         // Static outer card and heading. Only the content area below can move.
         val sceneCard = card().apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(8), dp(18), dp(20))
+            setPadding(dp(18), dp(4), dp(18), dp(20))
             clipChildren = true
             clipToPadding = true
         }
@@ -507,7 +506,7 @@ class MainActivity : Activity() {
         }
         sceneHeader.addView(sceneModeIcons, LinearLayout.LayoutParams(0, dp(40), 1f))
         sceneCard.addView(sceneHeader, LinearLayout.LayoutParams(-1, dp(40)))
-        addGap(sceneCard, 8)
+        addGap(sceneCard, 4)
 
         val sceneContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -928,15 +927,9 @@ class MainActivity : Activity() {
                                 stopActiveEffect(session)
                                 try { session.gatt?.disconnect(); session.gatt?.close() } catch (_: Exception) {}
                             }
-                            if (selectedDeviceAddresses.isEmpty() && managedDeviceAddresses.isNotEmpty()) {
-                                selectedDeviceAddresses.add(managedDeviceAddresses.first())
-                                selectedDeviceAddress = managedDeviceAddresses.first()
-                            }
                             activateSelectedSession()
                         } else {
                             managedDeviceAddresses.add(address)
-                            selectedDeviceAddresses.add(address)
-                            selectedDeviceAddress = address
                             saveManagedDevices()
                             connect(found.device)
                         }
@@ -1218,8 +1211,15 @@ class MainActivity : Activity() {
         selectedDeviceAddresses.mapNotNull { sessions[it] }.filter { it.connected && it.characteristic != null }
 
     private fun activateSelectedSession() {
-        selectedDeviceAddresses.removeAll { sessions[it]?.connected != true }
-        if (selectedDeviceAddress.isBlank() || sessions[selectedDeviceAddress.uppercase()]?.connected != true) {
+        val connectedAddresses = sessions.values.filter { it.connected }.map { it.address }.toSet()
+        selectedDeviceAddresses.retainAll(connectedAddresses)
+        if (connectedAddresses.size == 1) {
+            selectedDeviceAddresses.clear()
+            selectedDeviceAddresses.add(connectedAddresses.first())
+        } else if (selectedDeviceAddresses.isEmpty() && connectedAddresses.isNotEmpty()) {
+            selectedDeviceAddresses.add(connectedAddresses.first())
+        }
+        if (selectedDeviceAddress !in selectedDeviceAddresses) {
             selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
         }
         val d=sessions[selectedDeviceAddress.uppercase()]
@@ -1274,18 +1274,14 @@ class MainActivity : Activity() {
                 session.stripOn = false
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
                 runOnUiThread {
-                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
-                    else {
-                        status.text = "Підключено один контролер · шукаю другий..."
-                        refreshDevicePicker()
-                    }
+                    activateSelectedSession()
                 }
                 try { g.discoverServices() } catch (_: SecurityException) {}
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 session.connected = false
                 selectedDeviceAddresses.remove(session.address)
                 if (selectedDeviceAddress.equals(session.address, true)) {
-                    selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
+                    selectedDeviceAddress = ""
                 }
                 session.characteristic = null
                 session.notifyCharacteristic = null
@@ -1295,7 +1291,7 @@ class MainActivity : Activity() {
                 try { g.close() } catch (_: Exception) {}
                 session.gatt = null
                 runOnUiThread {
-                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
+                    activateSelectedSession()
                     refreshDevicePicker()
                 }
             }
@@ -1310,7 +1306,7 @@ class MainActivity : Activity() {
             session.notifyCharacteristic = powerState
             runOnUiThread {
                 if (statusCode == BluetoothGatt.GATT_SUCCESS && writeChar != null) {
-                    if (selectedDeviceAddresses.contains(session.address)) activateSelectedSession()
+                    activateSelectedSession()
                     val canNotify = powerState != null &&
                         (powerState.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
                             BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
@@ -1541,8 +1537,7 @@ class MainActivity : Activity() {
     }
 
     private fun disconnect() {
-        stopScan();closeGattConnection();sessions.clear();selectedDeviceAddresses.clear()
-        selectedDeviceAddresses.add(targetAddress.uppercase());selectedDeviceAddress=targetAddress.uppercase()
+        stopScan();closeGattConnection();sessions.clear();selectedDeviceAddresses.clear();selectedDeviceAddress=""
         status.text="Статус: не підключено";refreshDevicePicker();bulbButton.setLit(null)
         fireButton.text="Увімкнути вогонь";rainbowButton.text="Увімкнути веселку"
     }
