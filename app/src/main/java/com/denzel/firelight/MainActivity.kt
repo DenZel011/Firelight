@@ -231,8 +231,7 @@ class MainActivity : Activity() {
             if (managedDeviceAddresses.isEmpty()) managedDeviceAddresses.add(targetAddress.uppercase())
         }
         selectedDeviceAddresses.retainAll(managedDeviceAddresses)
-        if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(managedDeviceAddresses.first())
-        selectedDeviceAddress = selectedDeviceAddresses.first()
+        selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
         requestBluetoothPermissions()
         stripStateKnown = false
         stripOn = false
@@ -555,18 +554,31 @@ class MainActivity : Activity() {
                 setStroke(dp(1), Color.rgb(61, 70, 88))
             }
         }
-        val checks = linkedMapOf<String, TextView>(); val labels = linkedMapOf<String, TextView>()
+        val checks = linkedMapOf<String, TextView>()
+        val labels = linkedMapOf<String, TextView>()
+        val rowViews = linkedMapOf<String, View>()
         val addresses = managedDeviceAddresses.toList()
         fun refreshRows() {
             addresses.forEach { a ->
+                val available = sessions[a]?.connected == true
+                val selected = selectedDeviceAddresses.contains(a) && available
                 checks[a]?.apply {
-                    text = if (selectedDeviceAddresses.contains(a)) "✓" else ""
+                    text = if (selected) "✓" else ""
+                    setTextColor(if (available) Color.rgb(255, 142, 105) else Color.rgb(105, 113, 128))
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (selectedDeviceAddresses.contains(a)) Color.rgb(75, 48, 45) else Color.TRANSPARENT)
+                        setColor(if (selected) Color.rgb(75, 48, 45) else Color.TRANSPARENT)
                         cornerRadius = dp(10).toFloat()
                     }
                 }
-                labels[a]?.text = deviceDisplayName(a)
+                labels[a]?.apply {
+                    text = deviceDisplayName(a)
+                    setTextColor(if (available) Color.rgb(226, 231, 241) else Color.rgb(105, 113, 128))
+                }
+                rowViews[a]?.apply {
+                    alpha = if (available) 1f else .58f
+                    isEnabled = available
+                    isClickable = available
+                }
             }
             deviceField.text = "Пристрої · ${selectedDeviceAddresses.size} обрано  ▾"
         }
@@ -584,20 +596,22 @@ class MainActivity : Activity() {
                 setPadding(dp(16), 0, dp(14), 0); minimumHeight = dp(52)
                 isClickable = true; isFocusable = true
                 setOnClickListener {
+                    if (sessions[a]?.connected != true) return@setOnClickListener
                     if (!selectedDeviceAddresses.add(a)) {
                         selectedDeviceAddresses.remove(a)
-                        if (selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(a)
-                        if (selectedDeviceAddress.equals(a, true)) selectedDeviceAddress = selectedDeviceAddresses.first()
+                        if (selectedDeviceAddress.equals(a, true)) selectedDeviceAddress = selectedDeviceAddresses.firstOrNull() ?: ""
                     } else selectedDeviceAddress = a
                     activateSelectedSession(); refreshRows()
                 }
                 setOnLongClickListener {
+                    if (sessions[a]?.connected != true) return@setOnLongClickListener true
                     selectedDeviceAddresses.clear(); selectedDeviceAddresses.add(a); selectedDeviceAddress = a
                     activateSelectedSession(); devicePopup?.dismiss(); true
                 }
                 addView(label, LinearLayout.LayoutParams(0, -1, 1f)); addView(check, LinearLayout.LayoutParams(dp(28), dp(28)))
             }
-            labels[a] = label; checks[a] = check; rows.addView(row, LinearLayout.LayoutParams(-1, dp(52)))
+            labels[a] = label; checks[a] = check; rowViews[a] = row
+            rows.addView(row, LinearLayout.LayoutParams(-1, dp(52)))
         }
         refreshDevicePopup = { refreshRows() }; refreshRows()
         val popup = PopupWindow(rows, deviceField.width.coerceAtLeast(dp(220)), -2, true).apply {
@@ -1065,6 +1079,10 @@ class MainActivity : Activity() {
         selectedDeviceAddresses.mapNotNull { sessions[it] }.filter { it.connected && it.characteristic != null }
 
     private fun activateSelectedSession() {
+        selectedDeviceAddresses.removeAll { sessions[it]?.connected != true }
+        if (selectedDeviceAddress.isBlank() || sessions[selectedDeviceAddress.uppercase()]?.connected != true) {
+            selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
+        }
         val d=sessions[selectedDeviceAddress.uppercase()]
         gatt=d?.gatt; characteristic=d?.characteristic; notifyCharacteristic=d?.notifyCharacteristic
         connected=d?.connected==true; isMelkDevice=d?.isMelk==true
@@ -1126,6 +1144,10 @@ class MainActivity : Activity() {
                 try { g.discoverServices() } catch (_: SecurityException) {}
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 session.connected = false
+                selectedDeviceAddresses.remove(session.address)
+                if (selectedDeviceAddress.equals(session.address, true)) {
+                    selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
+                }
                 session.characteristic = null
                 session.notifyCharacteristic = null
                 session.stripStateKnown = false
