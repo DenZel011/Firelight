@@ -62,6 +62,7 @@ class MainActivity : Activity() {
     private lateinit var rainbowButton: Button
     private var scanning = false
     private var deviceAdapter: ArrayAdapter<String>? = null
+    private lateinit var deviceField: TextView
     private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
     private var selectedDeviceAddress = "BE:27:8A:00:73:DE"
 
@@ -318,7 +319,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        val deviceField = TextView(this).apply {
+        deviceField = TextView(this).apply {
             text="Пристрої · ${selectedDeviceAddresses.size} обрано"
             textSize=14f;setTextColor(Color.WHITE);gravity=android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(12),0,dp(12),0);setBackground(rounded(Color.rgb(29,34,46),13,Color.rgb(61,70,88)))
@@ -333,14 +334,14 @@ class MainActivity : Activity() {
                         if(selectedDeviceAddresses.isEmpty()) selectedDeviceAddresses.add(address)
                         selectedDeviceAddress=address
                         activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-                        this@apply.text="Пристрої · ${selectedDeviceAddresses.size} обрано"
+
                     }
                     setOnItemLongClickListener { _,_,position,_ ->
                         val address=(if(position==0) targetAddress else melkAddress).uppercase()
                         selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
                         selectedDeviceAddress=address
                         activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-                        this@apply.text="Пристрої · 1 обрано"
+
                         true
                     }
                 }
@@ -352,7 +353,7 @@ class MainActivity : Activity() {
                     val address=(if(position==0) targetAddress else melkAddress).uppercase()
                     selectedDeviceAddresses.clear();selectedDeviceAddresses.add(address)
                     selectedDeviceAddress=address;activateSelectedSession();deviceAdapter?.notifyDataSetChanged()
-                    this@apply.text="Пристрої · 1 обрано";dialog.dismiss();true
+                    this@MainActivity.deviceField.text="Пристрої · 1 обрано";dialog.dismiss();true
                 }
             }
         }
@@ -727,6 +728,7 @@ class MainActivity : Activity() {
             else->"Підключено · стрічка вимкнена"
         }
         deviceAdapter?.notifyDataSetChanged()
+        if (::deviceField.isInitialized) deviceField.text = "Пристрої · ${selectedDeviceAddresses.size} обрано"
     }
 
     private fun connect(device: BluetoothDevice) {
