@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=4,viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<title>Світлодіоди — Заповнення</title>
+<style>
+:root{color-scheme:dark;--bg:#101820;--panel:#192630;--line:#526674;--text:#edf4f7;--muted:#a9bac4;--active:#f3b64b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:780px;margin:auto;padding:18px 12px 28px}h1{font-size:23px;margin:0 0 7px}p{color:var(--muted);line-height:1.4;margin:6px 0 12px}
+.info{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:14px;margin:12px 2px}
+.canvas{background:#14212a;border:1px solid #344854;border-radius:15px;padding:8px;overflow:auto;touch-action:pan-x pan-y}
+svg{display:block;width:100%;height:auto;min-width:560px;max-height:76vh}
+.hex polygon{fill:#1c303c;stroke:#718692;stroke-width:1.6}
+.led{cursor:pointer;outline:none}.led .hit{fill:transparent;stroke:transparent}.led .dot{fill:#d6e2e8;stroke:#536975;stroke-width:1.2}
+.led.center .dot{fill:#68c9d6;stroke:#b4f1f5;stroke-width:1.4}
+.led.done .dot{fill:var(--active);stroke:#ffe0a0;stroke-width:1.5}
+.led text{fill:#17212a;font-size:8px;font-weight:800;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.led:not(.done) text{display:none}.led:focus .hit{stroke:#fff;stroke-width:1.5}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:11px 14px;border-radius:11px;font:inherit;font-weight:600}
+button.primary{background:var(--active);color:#241a0b;border-color:var(--active)}
+#status{font-size:13px}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:10px 2px}.legend span{display:flex;align-items:center;gap:6px}.swatch{width:10px;height:10px;border-radius:50%;background:#68c9d6}.swatch.corner{background:#d6e2e8}
+</style>
+</head>
+<body><main>
+<h1>Порядок світлодіодів — Заповнення</h1>
+<p>У кожній соті рівно 7 світлодіодів: один у центрі та шість у кутах. Натискай на точки в тому порядку, в якому вони мають засвічуватися в цьому сценарії. Нумерація буде спільною для всієї мозаїки.</p>
+<div class="info"><span id="count">Позначено: 0 із 182</span><span>26 сот · 7 LED у кожній</span></div>
+<div class="legend"><span><i class="swatch"></i>Центральний LED</span><span><i class="swatch corner"></i>Кутові LED</span><span>Жовтий — уже пронумерований</span></div>
+<div class="canvas"><svg id="grid" role="group" aria-label="Мозаїка з 26 шестикутників і 182 світлодіодів"></svg></div>
+<div class="toolbar"><button id="undo">Скасувати останній</button><button id="clear">Скинути порядок</button></div>
+<div class="toolbar"><button class="primary" id="share">Поділитися порядком</button></div>
+<p id="status">Натискай окремі точки. Якщо помилишся — скасуй останній крок. Після завершення надішли мені посилання.</p>
+</main>
+<script>
+(()=> {
+ const rows=11,cols=12,ids=[107,118,131,19,25,26,29,31,32,33,36,38,39,40,41,42,45,46,48,52,59,64,70,83,94,95];
+ const svg=document.getElementById('grid'),count=document.getElementById('count'),status=document.getElementById('status');
+ const NS='http://www.w3.org/2000/svg',R=30,dx=Math.sqrt(3)*R,dy=1.5*R,m=R+12;
+ let order=[];
+ const el=(tag,attrs={})=>{const n=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));return n};
+ const key=(cell,pos)=>cell+'-'+pos;
+ function hash(){return '#ledorder='+order.map(x=>key(x.cell,x.pos)).join('.')};
+ function load(){const m=location.hash.match(/^#ledorder=(.*)$/);if(!m)return;const seen=new Set();for(const item of (m[1]||'').split('.')){const z=item.match(/^(\d+)-([0-6])$/);if(!z)continue;const cell=Number(z[1]),pos=Number(z[2]),k=key(cell,pos);if(ids.includes(cell)&&!seen.has(k)){order.push({cell,pos});seen.add(k)}}}
+ function draw(){
+  svg.replaceChildren();
+  const w=(cols-1)*dx+dx/2+2*m+R,h=(rows-1)*dy+2*m;
+  svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+  const numbered=new Map(order.map((v,i)=>[key(v.cell,v.pos),i+1]));
+  for(const id of ids){
+   const r=Math.floor(id/cols),c=id%cols,x=m+c*dx+(r%2)*dx/2,y=m+r*dy;
+   const points=Array.from({length:6},(_,i)=>{const a=(-90+i*60)*Math.PI/180;return [x+R*Math.cos(a),y+R*Math.sin(a)]});
+   const polygon=el('polygon',{points:points.map(p=>p.join(',')).join(' ')});svg.append(polygon);
+   const positions=[[x,y],...points];
+   positions.forEach(([px,py],pos)=>{
+    const n=numbered.get(key(id,pos)),g=el('g',{class:'led '+(pos===0?'center ':'')+(n?'done':''),tabindex:'0',role:'button','aria-label':'Сота '+id+', '+(pos===0?'центр':'кут '+pos)+(n?', номер '+n:', ще не пронумеровано')});
+    g.append(el('circle',{class:'hit',cx:px,cy:py,r:10}));
+    g.append(el('circle',{class:'dot',cx:px,cy:py,r:5.2}));
+    const t=el('text',{x:px,y:py+0.3});if(n)t.textContent=String(n);g.append(t);
+    const pick=()=>{if(n){status.textContent='Цей світлодіод уже має номер '+n+'. Щоб змінити порядок, скасуй кроки до нього.';return}if(order.length>=182)return;order.push({cell:id,pos});draw();history.replaceState(null,'',hash());status.textContent='Додано світлодіод №'+order.length+'.'};
+    g.addEventListener('click',pick);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}});
+    svg.append(g);
+   });
+  }
+  count.textContent='Позначено: '+order.length+' із 182';
+ }
+ document.getElementById('undo').onclick=()=>{if(order.length){order.pop();draw();history.replaceState(null,'',hash());status.textContent='Останній крок скасовано.'}};
+ document.getElementById('clear').onclick=()=>{order=[];draw();history.replaceState(null,'',hash());status.textContent='Порядок скинуто. Можеш почати заново.'};
+ document.getElementById('share').onclick=async()=>{const url=location.href.split('#')[0]+hash();history.replaceState(null,'',hash());try{await navigator.clipboard.writeText(url);status.textContent='Посилання скопійовано. Надішли його мені в чат.'}catch(e){status.textContent='Скопіюй посилання з адресного рядка браузера.';prompt('Посилання на твій порядок:',url)}};
+ load();draw();
+})();
+</script></body></html>
