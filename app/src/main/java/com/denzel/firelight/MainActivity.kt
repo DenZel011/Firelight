@@ -485,7 +485,7 @@ class MainActivity : Activity() {
         // Static outer card and heading. Only the content area below can move.
         val sceneCard = card().apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(20))
+            setPadding(dp(18), dp(8), dp(18), dp(20))
             clipChildren = true
             clipToPadding = true
         }
