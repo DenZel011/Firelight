@@ -474,8 +474,10 @@ class MainActivity : Activity() {
             setPadding(0, dp(2), 0, dp(8))
         }
         val sceneCard = card().apply {
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setPadding(dp(18), dp(20), dp(18), dp(20))
             gravity = android.view.Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
         }
         sceneCard.addView(text("СЦЕНИ", 11f, muted, true))
         addGap(sceneCard, 18)
@@ -491,54 +493,60 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
         }
         sceneCard.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(72)))
-        addGap(sceneCard, 8)
+        addGap(sceneCard, 10)
         val sceneName = text(sceneNames[0], 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        sceneCard.addView(sceneName)
-        addGap(sceneCard, 8)
+        sceneCard.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
+        addGap(sceneCard, 10)
         val sceneDescription = text(sceneDescriptions[0], 14f, muted, false).apply {
             gravity = android.view.Gravity.CENTER
+            maxLines = Int.MAX_VALUE
+            ellipsize = null
         }
         sceneCard.addView(sceneDescription, LinearLayout.LayoutParams(-1, -2))
-        addGap(sceneCard, 20)
+        addGap(sceneCard, 22)
         val scenePosition = text("01 / 02", 12f, Color.rgb(255, 142, 105), true).apply {
             gravity = android.view.Gravity.CENTER
         }
         sceneCard.addView(scenePosition)
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val sceneHint = text("Гортай вгору або вниз, щоб перемикати сцени", 12f, muted, false).apply {
+        val sceneHint = text("Гортай ліворуч або праворуч", 12f, muted, false).apply {
             gravity = android.view.Gravity.CENTER
             setPadding(dp(8), dp(12), dp(8), dp(4))
         }
         scenePage.addView(sceneHint)
 
-        fun showScene(nextIndex: Int, swipeUp: Boolean) {
+        fun showScene(nextIndex: Int, swipeLeft: Boolean) {
             selectedSceneIndex = (nextIndex + sceneNames.size) % sceneNames.size
-            val exitY = if (swipeUp) -dp(18).toFloat() else dp(18).toFloat()
+            val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
             sceneCard.animate().cancel()
-            sceneCard.animate().translationY(exitY).alpha(0f).setDuration(100L).withEndAction {
+            sceneCard.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
                 sceneSymbol.text = sceneSymbols[selectedSceneIndex]
                 sceneName.text = sceneNames[selectedSceneIndex]
                 sceneDescription.text = sceneDescriptions[selectedSceneIndex]
                 scenePosition.text = "%02d / %02d".format(selectedSceneIndex + 1, sceneNames.size)
-                sceneCard.translationY = -exitY
-                sceneCard.animate().translationY(0f).alpha(1f).setDuration(160L).start()
+                sceneCard.translationX = -exitX
+                sceneCard.animate().translationX(0f).alpha(1f).setDuration(190L).start()
             }.start()
         }
 
+        var sceneTouchStartX = 0f
         var sceneTouchStartY = 0f
         sceneCard.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    sceneTouchStartX = event.x
                     sceneTouchStartY = event.y
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    val delta = event.y - sceneTouchStartY
-                    if (kotlin.math.abs(delta) >= dp(45)) {
-                        if (delta < 0f) showScene(selectedSceneIndex + 1, true)
+                    val deltaX = event.x - sceneTouchStartX
+                    val deltaY = event.y - sceneTouchStartY
+                    if (kotlin.math.abs(deltaX) >= dp(45) &&
+                        kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.25f) {
+                        if (deltaX < 0f) showScene(selectedSceneIndex + 1, true)
                         else showScene(selectedSceneIndex - 1, false)
                     }
                     true
