@@ -119,7 +119,7 @@ class MainActivity : Activity() {
             // Keep the previous overall rainbow timing while measuring progress
             // in hue degrees. Each transition now takes time proportional to
             // its angular distance, so hue moves at a consistent average rate.
-            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * (360f / 7f)) % totalPhase
+            rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 360f) % totalPhase
 
             var remaining = rainbowPhase
             var rgb = Color.HSVToColor(floatArrayOf(palette[0], 1f, 1f))
