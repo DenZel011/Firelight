@@ -960,6 +960,65 @@ class MainActivity : Activity() {
         testActions.addView(stopTest, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
         page.addView(testActions, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(8) })
 
+        var onePixelConfigApplied = false
+        fun restorePixelCount(showHint: Boolean = true) {
+            val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+            if (targets.isEmpty()) {
+                if (showHint) hint.text = "Немає підключеного MELK-OA21. Налаштування 1 піксель може залишитися в контролері — підключи його й натисни «Відновити 182»."
+                return
+            }
+            val restore = byteArrayOf(0x7E, 0x07, 0x21, 0xB6.toByte(), 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
+            targets.forEach { d ->
+                cancelTestRunners(d)
+                val g = d.gatt ?: return@forEach
+                val ch = d.characteristic ?: return@forEach
+                writeBlePacketTo(g, ch, restore)
+            }
+            onePixelConfigApplied = false
+            if (showHint) hint.text = "Надіслано відновлення кількості пікселів: 182."
+        }
+
+        val pixelExperiment = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val onePixelButton = Button(this).apply {
+            text = "Спроба: 1 LED"
+            isAllCaps = false
+            setOnClickListener {
+                val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+                if (targets.isEmpty()) {
+                    hint.text = "Підключи та вибери MELK-OA21 для тесту."
+                    return@setOnClickListener
+                }
+                targets.forEach { d ->
+                    cancelTestRunners(d)
+                    val g = d.gatt ?: return@forEach
+                    val ch = d.characteristic ?: return@forEach
+                    val one = byteArrayOf(0x7E, 0x07, 0x21, 0x01, 0x00, 0x00, 0xFF.toByte(), 0x00, 0xEF.toByte())
+                    val red = byteArrayOf(0x7E, 0x07, 0x05, 0x03, 0xFF.toByte(), 0x00, 0x00, 0x10, 0xEF.toByte())
+                    writeBlePacketTo(g, ch, one)
+                    handler.postDelayed({
+                        if (d.connected && d.gatt === g && d.characteristic === ch) {
+                            writeBlePacketTo(g, ch, red)
+                            d.stripOn = true
+                            d.stripStateKnown = true
+                        }
+                    }, 180L)
+                }
+                onePixelConfigApplied = true
+                hint.text = "Надіслано команду встановити 1 піксель, за 180 мс — червоний колір. Якщо світиться лише один LED, натисни «Відновити 182» після перевірки."
+            }
+        }
+        val restoreButton = Button(this).apply {
+            text = "Відновити 182"
+            isAllCaps = false
+            setOnClickListener { restorePixelCount() }
+        }
+        pixelExperiment.addView(onePixelButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(6) })
+        pixelExperiment.addView(restoreButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(6) })
+        page.addView(pixelExperiment, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(8) })
+
         val selected = TextView(this).apply {
             text = "Не вибрано"
             textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1015,6 +1074,9 @@ class MainActivity : Activity() {
         }
         scroll.addView(grid)
         page.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        dialog.setOnDismissListener {
+            if (onePixelConfigApplied) restorePixelCount(showHint = false)
+        }
         dialog.setContentView(page)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
