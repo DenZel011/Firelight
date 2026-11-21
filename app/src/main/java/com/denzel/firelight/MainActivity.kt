@@ -106,48 +106,57 @@ class MainActivity : Activity() {
             val slowEndFactor = 1f + 0.30f * ((20 - speed) / 19f)
             val baseCycleMs = ((12500L - (speed - 1) * 520L).coerceAtLeast(1800L) * slowEndFactor).toLong()
 
-            // Give red, orange and yellow a short speed-scaled dwell after each
-            // smooth transition. Other colors remain continuously in motion.
-            // Warm colors: red (0°), orange (15°), yellow (30°).
-            // The former yellow at 60° is intentionally removed.
-            val palette = floatArrayOf(0f, 15f, 30f, 120f, 180f, 240f, 280f)
-            val redHold = 0.60f
-            val orangeHold = 0.75f
-            val yellowHold = 0.60f
+            // Warm colors: red (0°), orange (12°), yellow (30°).
+            // Blend adjacent RGB colors instead of switching hue values abruptly.
+            val palette = floatArrayOf(0f, 12f, 30f, 120f, 180f, 240f, 280f)
+            // Keep all three warm-color pauses equal; shorten them only at max speed.
+            val pauseScale = if (speed == 20) 0.75f else 1f
+            val redHold = 0.60f * pauseScale
+            val orangeHold = 0.60f * pauseScale
+            val yellowHold = 0.60f * pauseScale
             val totalPhase = 7f + redHold + orangeHold + yellowHold
             rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 7f) % totalPhase
 
             var remaining = rainbowPhase
-            var hue = palette[0]
+            var rgb = Color.HSVToColor(floatArrayOf(palette[0], 1f, 1f))
             for (i in palette.indices) {
                 val next = (i + 1) % palette.size
-                val delta = ((palette[next] - palette[i] + 540f) % 360f) - 180f
                 val hold = when (next) {
                     0 -> redHold
                     1 -> orangeHold
                     2 -> yellowHold
                     else -> 0f
                 }
+                val from = Color.HSVToColor(floatArrayOf(palette[i], 1f, 1f))
+                val to = Color.HSVToColor(floatArrayOf(palette[next], 1f, 1f))
                 if (remaining <= 1f) {
-                    // Cosine easing makes each transition start and finish at
-                    // zero hue velocity, avoiding the visible snap at color boundaries.
+                    // Crossfade the old and new RGB colors with cosine easing.
+                    // Both colors contribute throughout the transition, so no
+                    // channel is abruptly switched off when the next one starts.
                     val t = remaining.coerceIn(0f, 1f)
-                    val eased = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
-                    hue = (palette[i] + delta * eased + 360f) % 360f
+                    val blend = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * 0.5f
+                    val r = Color.red(from) * (1f - blend) + Color.red(to) * blend
+                    val g = Color.green(from) * (1f - blend) + Color.green(to) * blend
+                    val b = Color.blue(from) * (1f - blend) + Color.blue(to) * blend
+                    val peak = maxOf(r, g, b).coerceAtLeast(1f)
+                    val scale = 255f / peak
+                    rgb = Color.rgb(
+                        (r * scale).toInt().coerceIn(0, 255),
+                        (g * scale).toInt().coerceIn(0, 255),
+                        (b * scale).toInt().coerceIn(0, 255)
+                    )
                     break
                 }
                 if (remaining <= 1f + hold) {
-                    hue = palette[next]
+                    rgb = to
                     break
                 }
                 remaining -= 1f + hold
             }
 
-            val rgb = Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
             sendRGB(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
-            // Update more frequently; BLE output is safely coalesced to its
-            // supported write interval in flushPendingColor().
-            handler.postDelayed(this, 30L)
+            // Render at 50 FPS; BLE writes are paced separately to avoid queueing.
+            handler.postDelayed(this, 20L)
         }
     }
 
@@ -1034,7 +1043,8 @@ class MainActivity : Activity() {
 
         if (!writeScheduled) {
             writeScheduled = true
-            val wait = (50L - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
+            val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
+            val wait = (interval - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
             handler.postDelayed({ flushPendingColor() }, wait)
         }
     }
@@ -1050,7 +1060,8 @@ class MainActivity : Activity() {
 
         if (pendingPacket != null && !writeScheduled) {
             writeScheduled = true
-            handler.postDelayed({ flushPendingColor() }, 50L)
+            val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
+            handler.postDelayed({ flushPendingColor() }, interval)
         }
     }
 
