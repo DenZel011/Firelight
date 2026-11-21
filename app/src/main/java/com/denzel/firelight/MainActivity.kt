@@ -43,7 +43,8 @@ class MainActivity : Activity() {
     private lateinit var rainbowButton: Button
     private var scanning = false
     private var deviceAdapter: ArrayAdapter<String>? = null
-    private val deviceNames = listOf("ELK-BLEDOB", "Пристрій 2", "Пристрій 3", "Пристрій 4")
+    private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
+    private var selectedDeviceAddress = "BE:27:8A:00:73:DE"
 
     private var red = 255
     private var green = 92
@@ -353,14 +354,14 @@ class MainActivity : Activity() {
         deviceAdapter = object : ArrayAdapter<String>(
             this, android.R.layout.simple_spinner_item, deviceNames
         ) {
-            override fun isEnabled(position: Int): Boolean = position == 0 && connected
+            override fun isEnabled(position: Int): Boolean = !connected
 
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
                     text = deviceNames[position]
                     textSize = 14f
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
+                    setTextColor(if (chosen.equals(selectedDeviceAddress, ignoreCase = true)) Color.WHITE else Color.rgb(190, 199, 215))
                     setPadding(dp(12), 0, dp(34), 0)
                     includeFontPadding = false
                 }
@@ -368,9 +369,14 @@ class MainActivity : Activity() {
 
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 return (convertView as? TextView ?: TextView(this@MainActivity)).apply {
-                    text = if (position == 0 && connected) "ELK-BLEDOB     Підключено"
-                        else if (position == 0) "ELK-BLEDOB     Недоступний"
-                        else "${deviceNames[position]}     Недоступний"
+                    val chosen = if (position == 0) targetAddress else melkAddress
+                    text = when {
+                        connected && chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
+                            "${deviceNames[position]}     Підключено"
+                        chosen.equals(selectedDeviceAddress, ignoreCase = true) ->
+                            "${deviceNames[position]}     Обрано"
+                        else -> deviceNames[position]
+                    }
                     textSize = 14f
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     setTextColor(if (position == 0 && connected) Color.WHITE else Color.rgb(112, 120, 137))
@@ -384,6 +390,13 @@ class MainActivity : Activity() {
         val deviceSpinner = Spinner(this, null, android.R.attr.spinnerStyle, Spinner.MODE_DROPDOWN).apply {
             adapter = deviceAdapter
             setSelection(0)
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    selectedDeviceAddress = if (position == 1) melkAddress else targetAddress
+                    deviceAdapter?.notifyDataSetChanged()
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            }
             setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
             setPadding(0, 0, dp(28), 0)
             dropDownWidth = resources.displayMetrics.widthPixels - dp(48)
@@ -718,15 +731,12 @@ class MainActivity : Activity() {
         status.text = "Шукаю ELK-BLEDOB або MELK-OA21 2C..."
         scanning = true
         try {
-            val filters = listOf(
-                ScanFilter.Builder().setDeviceAddress(targetAddress).build(),
-                ScanFilter.Builder().setDeviceAddress(melkAddress).build()
-            )
+            val filter = ScanFilter.Builder().setDeviceAddress(selectedDeviceAddress).build()
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
-            activeScanner.startScan(filters, settings, scanCallback)
+            activeScanner.startScan(listOf(filter), settings, scanCallback)
             handler.removeCallbacks(scanTimeout)
             handler.postDelayed(scanTimeout, 10000)
         } catch (e: SecurityException) {
@@ -741,8 +751,7 @@ class MainActivity : Activity() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = try { result.device.address } catch (_: SecurityException) { "" }
-            if (address.equals(targetAddress, ignoreCase = true) ||
-                address.equals(melkAddress, ignoreCase = true)) {
+            if (address.equals(selectedDeviceAddress, ignoreCase = true)) {
                 stopScan()
                 runOnUiThread {
                     status.text = if (address.equals(melkAddress, ignoreCase = true))
@@ -755,10 +764,8 @@ class MainActivity : Activity() {
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
             results.firstOrNull {
-                try {
-                    it.device.address.equals(targetAddress, ignoreCase = true) ||
-                        it.device.address.equals(melkAddress, ignoreCase = true)
-                } catch (_: SecurityException) { false }
+                try { it.device.address.equals(selectedDeviceAddress, ignoreCase = true) }
+                catch (_: SecurityException) { false }
             }?.let { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
 
@@ -907,14 +914,10 @@ class MainActivity : Activity() {
                     }
                     if (isMelkDevice) {
                         status.text = "MELK знайдено · ініціалізую контролер…"
-                        writeBlePacket(byteArrayOf(
-                            0x7E, 0x07, 0x83.toByte(), 0x00, 0x00, 0x00, 0x00, 0x00, 0xEF.toByte()
-                        ))
+                        writeBlePacket(byteArrayOf(0x7E, 0x07, 0x83.toByte()))
                         handler.postDelayed({
                             if (g === gatt && connected) {
-                                writeBlePacket(byteArrayOf(
-                                    0x7E, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEF.toByte()
-                                ))
+                                writeBlePacket(byteArrayOf(0x7E, 0x04, 0x04))
                                 status.text = "MELK-OA21 2C підключено · стан не передається"
                             }
                         }, 140L)
