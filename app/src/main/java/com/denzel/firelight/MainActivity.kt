@@ -109,8 +109,10 @@ class MainActivity : Activity() {
             // Give red, orange and yellow a short speed-scaled dwell after each
             // smooth transition. Other colors remain continuously in motion.
             val palette = floatArrayOf(0f, 30f, 60f, 120f, 180f, 240f, 280f)
-            val warmColorHold = 0.30f
-            val totalPhase = 7f + warmColorHold * 3f
+            val redHold = 0.60f
+            val orangeHold = 0.75f
+            val yellowHold = 0.60f
+            val totalPhase = 7f + redHold + orangeHold + yellowHold
             rainbowPhase = (rainbowPhase + elapsed.toFloat() / baseCycleMs.toFloat() * 7f) % totalPhase
 
             var remaining = rainbowPhase
@@ -118,7 +120,12 @@ class MainActivity : Activity() {
             for (i in palette.indices) {
                 val next = (i + 1) % palette.size
                 val delta = ((palette[next] - palette[i] + 540f) % 360f) - 180f
-                val hold = if (next <= 2) warmColorHold else 0f
+                val hold = when (next) {
+                    0 -> redHold
+                    1 -> orangeHold
+                    2 -> yellowHold
+                    else -> 0f
+                }
                 if (remaining <= 1f) {
                     hue = (palette[i] + delta * remaining + 360f) % 360f
                     break
