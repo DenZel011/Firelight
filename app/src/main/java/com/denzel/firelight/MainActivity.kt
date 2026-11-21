@@ -38,6 +38,7 @@ class MainActivity : Activity() {
         var mode: EffectMode = EffectMode.NONE,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
         var speed: Int = 15, var spread: Int = 0, var rainbowSpeed: Int = 15,
+        var fillSpeed: Int = 50, var fillSpeedRunner: Runnable? = null,
         var phase: Float = 0f, var lastTick: Long = 0L,
         var level: Float = .76f, var targetLevel: Float = .76f, var hueShift: Float = 0f,
         var targetHue: Float = 0f, var saturation: Float = .94f, var targetSaturation: Float = .94f,
@@ -56,11 +57,12 @@ class MainActivity : Activity() {
 
     private var connected = false
     private var fireEnabled = false
-    private enum class EffectMode { NONE, FIRE, RAINBOW }
+    private enum class EffectMode { NONE, FIRE, RAINBOW, FILL }
     private enum class DeviceLayout { SIMULTANEOUS, SEQUENTIAL }
     private var activeMode = EffectMode.NONE
     private var deviceLayout = DeviceLayout.SIMULTANEOUS
     private var rainbowSpeed = 15
+    private var fillSpeed = 50
     private var rainbowPhase = 0f
     private var rainbowLastTickAt = 0L
     private lateinit var rainbowButton: Button
@@ -528,6 +530,19 @@ class MainActivity : Activity() {
         sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
+        val fillSpeedCard = card().apply {
+            setPadding(dp(12), dp(10), dp(12), dp(4))
+        }
+        addModernSlider(fillSpeedCard, "Швидкість заповнення", fillSpeed, 100, "%", 2) { value ->
+            fillSpeed = value.coerceIn(0, 100)
+            selectedSessions().filter { it.isMelk }.forEach { d ->
+                d.fillSpeed = fillSpeed
+                if (d.mode == EffectMode.FILL) scheduleMelkModeSpeed(d)
+            }
+        }
+        scenePage.addView(fillSpeedCard, LinearLayout.LayoutParams(-1, -2))
+        fillSpeedCard.visibility = View.VISIBLE
+
         fun applySceneColor(index: Int) {
             val rgb = sceneColors[index]
             red = rgb[0]; green = rgb[1]; blue = rgb[2]
@@ -535,17 +550,32 @@ class MainActivity : Activity() {
             selectedSessions().forEach { d ->
                 stopActiveEffect(d)
                 d.red = red; d.green = green; d.blue = blue
-                d.mode = EffectMode.NONE
                 if (!d.stripOn) {
                     d.stripOn = true
                     d.stripStateKnown = true
                     sendPowerCommand(d, true)
                 }
-                handler.postDelayed({
-                    if (d.connected && d.stripOn && d.mode == EffectMode.NONE) {
-                        sendRGBTo(d, red, green, blue)
-                    }
-                }, 180L)
+                if (index == 0 && d.isMelk) {
+                    d.mode = EffectMode.FILL
+                    d.fillSpeed = fillSpeed
+                    handler.postDelayed({
+                        if (d.connected && d.stripOn && d.mode == EffectMode.FILL) {
+                            sendMelkMode(d, 190) // R-G-B Flush Open
+                            handler.postDelayed({
+                                if (d.connected && d.stripOn && d.mode == EffectMode.FILL) {
+                                    sendMelkModeSpeed(d, d.fillSpeed)
+                                }
+                            }, 120L)
+                        }
+                    }, 220L)
+                } else {
+                    d.mode = EffectMode.NONE
+                    handler.postDelayed({
+                        if (d.connected && d.stripOn && d.mode == EffectMode.NONE) {
+                            sendRGBTo(d, red, green, blue)
+                        }
+                    }, 180L)
+                }
             }
             refreshEffectButtons()
             activateSelectedSession()
@@ -556,6 +586,7 @@ class MainActivity : Activity() {
             val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
             sceneContent.animate().cancel()
             sceneContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
+                fillSpeedCard.visibility = if (selectedSceneIndex == 0) View.VISIBLE else View.GONE
                 sceneSymbol.text = sceneSymbols[selectedSceneIndex]
                 sceneSymbol.textSize = sceneSymbolSizes[selectedSceneIndex]
                 sceneName.text = sceneNames[selectedSceneIndex]
@@ -1228,7 +1259,7 @@ class MainActivity : Activity() {
         gatt=d?.gatt; characteristic=d?.characteristic; notifyCharacteristic=d?.notifyCharacteristic
         connected=d?.connected==true; isMelkDevice=d?.isMelk==true
         deviceLayout=if(isMelkDevice) DeviceLayout.SEQUENTIAL else DeviceLayout.SIMULTANEOUS
-        if(d!=null){red=d.red;green=d.green;blue=d.blue;brightness=d.brightness;speed=d.speed;fireColorSpread=d.spread;rainbowSpeed=d.rainbowSpeed;if(::preview.isInitialized)updatePreview()}
+        if(d!=null){red=d.red;green=d.green;blue=d.blue;brightness=d.brightness;speed=d.speed;fireColorSpread=d.spread;rainbowSpeed=d.rainbowSpeed;fillSpeed=d.fillSpeed;if(::preview.isInitialized)updatePreview()}
         val chosen=selectedSessions()
         val powerStates=chosen.map{if(it.stripStateKnown) it.stripOn else null}.distinct()
         bulbButton.setLit(if(chosen.isEmpty() || powerStates.size!=1) null else powerStates.first())
@@ -1409,6 +1440,31 @@ class MainActivity : Activity() {
         val packet=if(on) byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
             else byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
         writeBlePacketTo(session.gatt ?: return,session.characteristic ?: return,packet)
+    }
+
+    private fun sendMelkMode(session: DeviceSession, mode: Int) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x05, 0x03, mode.toByte(), 0x06, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+    }
+
+    private fun sendMelkModeSpeed(session: DeviceSession, value: Int) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x04, 0x02, value.coerceIn(0, 100).toByte(),
+            0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+    }
+
+    private fun scheduleMelkModeSpeed(session: DeviceSession) {
+        if (!session.isMelk || session.mode != EffectMode.FILL) return
+        session.fillSpeedRunner?.let { handler.removeCallbacks(it) }
+        val runner = Runnable {
+            if (session.connected && session.stripOn && session.mode == EffectMode.FILL) {
+                sendMelkModeSpeed(session, session.fillSpeed)
+            }
+        }
+        session.fillSpeedRunner = runner
+        handler.postDelayed(runner, 120L)
     }
 
     private fun sendRGBTo(d:DeviceSession,r:Int,g:Int,b:Int) {
