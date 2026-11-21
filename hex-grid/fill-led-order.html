@@ -26,7 +26,7 @@ button.primary{background:var(--active);color:#241a0b;border-color:var(--active)
 </head>
 <body><main>
 <h1>Порядок світлодіодів — Заповнення</h1>
-<p>У кожній соті рівно 7 світлодіодів: один у центрі та шість у кутах. Натискай на точки в тому порядку, в якому вони мають засвічуватися в цьому сценарії. Нумерація буде спільною для всієї мозаїки.</p>
+<p>У кожній соті рівно 7 світлодіодів: один у центрі та шість усередині соти, ближче до її сторін, а не у вершинах. Натискай на точки в тому порядку, в якому вони мають засвічуватися в цьому сценарії. Нумерація буде спільною для всієї мозаїки.</p>
 <div class="info"><span id="count">Позначено: 0 із 182</span><span>26 сот · 7 LED у кожній</span></div>
 <div class="legend"><span><i class="swatch"></i>Центральний LED</span><span><i class="swatch corner"></i>Кутові LED</span><span>Жовтий — уже пронумерований</span></div>
 <div class="canvas"><svg id="grid" role="group" aria-label="Мозаїка з 26 шестикутників і 182 світлодіодів"></svg></div>
@@ -51,9 +51,13 @@ button.primary{background:var(--active);color:#241a0b;border-color:var(--active)
   const numbered=new Map(order.map((v,i)=>[key(v.cell,v.pos),i+1]));
   for(const id of ids){
    const r=Math.floor(id/cols),c=id%cols,x=m+c*dx+(r%2)*dx/2,y=m+r*dy;
-   const ledRadius=R*0.58;const points=Array.from({length:6},(_,i)=>{const a=(-90+i*60)*Math.PI/180;return [x+ledRadius*Math.cos(a),y+ledRadius*Math.sin(a)]});
-   const polygon=el('polygon',{points:points.map(p=>p.join(',')).join(' ')});svg.append(polygon);
-   const positions=[[x,y],...points];
+   const angles=Array.from({length:6},(_,i)=>(-90+i*60)*Math.PI/180);
+   const hexPoints=angles.map(a=>[x+R*Math.cos(a),y+R*Math.sin(a)]);
+   const polygon=el('polygon',{points:hexPoints.map(p=>p.join(',')).join(' ')});svg.append(polygon);
+   // Усі шість крайніх LED зміщені всередину від вершин; контур соти малюється окремо.
+   const ledRadius=R*0.62;
+   const ledPoints=angles.map(a=>[x+ledRadius*Math.cos(a),y+ledRadius*Math.sin(a)]);
+   const positions=[[x,y],...ledPoints];
    positions.forEach(([px,py],pos)=>{
     const n=numbered.get(key(id,pos)),g=el('g',{class:'led '+(pos===0?'center ':'')+(n?'done':''),tabindex:'0',role:'button','aria-label':'Сота '+id+', '+(pos===0?'центр':'кут '+pos)+(n?', номер '+n:', ще не пронумеровано')});
     g.append(el('circle',{class:'hit',cx:px,cy:py,r:10}));
