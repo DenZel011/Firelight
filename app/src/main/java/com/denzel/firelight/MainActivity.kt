@@ -92,6 +92,8 @@ class MainActivity : Activity() {
             status.text = "Підключено · контролер не передав стан стрічки"
         }
     }
+    // A named callback lets power-off cancel every queued RGB flush reliably.
+    private val colorFlushTask = Runnable { flushPendingColor() }
 
     private val rainbowTask = object : Runnable {
         override fun run() {
@@ -1051,7 +1053,7 @@ class MainActivity : Activity() {
             writeScheduled = true
             val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
             val wait = (interval - (SystemClock.uptimeMillis() - lastWriteAt)).coerceAtLeast(0L)
-            handler.postDelayed({ flushPendingColor() }, wait)
+            handler.postDelayed(colorFlushTask, wait)
         }
     }
 
@@ -1067,7 +1069,7 @@ class MainActivity : Activity() {
         if (pendingPacket != null && !writeScheduled) {
             writeScheduled = true
             val interval = if (activeMode == EffectMode.RAINBOW) 30L else 50L
-            handler.postDelayed({ flushPendingColor() }, interval)
+            handler.postDelayed(colorFlushTask, interval)
         }
     }
 
@@ -1096,9 +1098,13 @@ class MainActivity : Activity() {
         }
         stripOn = !stripOn
         if (!stripOn) {
+            // Stop producers and discard any RGB packet queued before power-off.
+            stopActiveEffect()
+            pendingPacket = null
+            handler.removeCallbacks(colorFlushTask)
+            writeScheduled = false
             sendPowerCommand(false)
             bulbButton.setLit(stripOn)
-            stopActiveEffect()
         } else {
             bulbButton.setLit(stripOn)
             // Wake the controller with its dedicated power command before sending RGB.
