@@ -325,6 +325,14 @@ class MainActivity : Activity() {
                     setPadding(dp(16), 0, dp(14), 0)
                     minimumHeight = dp(52)
                     setBackgroundColor(Color.TRANSPARENT)
+                    isLongClickable = true
+                    setOnLongClickListener {
+                        selectedDeviceAddresses.clear()
+                        selectedDeviceAddresses.add(address.uppercase())
+                        selectedDeviceAddress = address.uppercase()
+                        activateSelectedSession()
+                        true
+                    }
                     addView(TextView(this@MainActivity).apply {
                         text = deviceDisplayName(address)
                         textSize = 14f
@@ -835,7 +843,7 @@ class MainActivity : Activity() {
         deviceAdapter?.notifyDataSetChanged()
         if (::deviceField.isInitialized) {
             updatingDevicePicker = true
-            deviceField.setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 1 else 0)
+            deviceField.setSelection(if (selectedDeviceAddress.equals(melkAddress, true)) 0 else 1)
             updatingDevicePicker = false
         }
     }
