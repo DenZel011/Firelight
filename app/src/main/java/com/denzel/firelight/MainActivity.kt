@@ -1714,10 +1714,10 @@ class MainActivity : Activity() {
 
     private fun connect(device: BluetoothDevice) {
         if (bridgeGatt != null) return
-        val rgb = sessions.getOrPut(targetAddress.uppercase()) {
+        sessions.getOrPut(targetAddress.uppercase()) {
             DeviceSession(targetAddress.uppercase(), false)
         }
-        val melk = sessions.getOrPut(melkAddress.uppercase()) {
+        sessions.getOrPut(melkAddress.uppercase()) {
             DeviceSession(melkAddress.uppercase(), true)
         }
         status.text = "Підключення до Firelight Bridge…"
@@ -1822,7 +1822,7 @@ class MainActivity : Activity() {
             // Preserve MELK's two original initialization packets, target 0x01.
             writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x07, 0x83.toByte()), true)
             handler.postDelayed({
-                if (bridgeGatt === g && melk.connected) {
+                if (bridgeGatt === g && sessions[melkAddress.uppercase()]?.connected == true) {
                     writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x04, 0x04), true)
                 }
             }, 140L)
@@ -2416,9 +2416,9 @@ class MainActivity : Activity() {
         handler.removeCallbacks(powerStateTimeout)
         sessions.values.forEach { d ->
             stopActiveEffect(d)
-            val old=d.gatt;d.gatt=null;d.characteristic=null;d.notifyCharacteristic=null;d.connected=false
+            d.gatt=null;d.characteristic=null;d.notifyCharacteristic=null;d.connected=false
             d.stripOn=false;d.stripStateKnown=false
-            try{old?.disconnect();old?.close()}catch(_:Exception){}
+            clearBleWriteQueue(d)
         }
         bridgeWriteQueue.clear(); bridgeWriteInFlight=false
         bridgeWriteRunner?.let { handler.removeCallbacks(it) }
