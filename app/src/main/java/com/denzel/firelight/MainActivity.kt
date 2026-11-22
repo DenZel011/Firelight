@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private var bridgeStatusCharacteristic: BluetoothGattCharacteristic? = null
     private val bridgeWriteQueue = java.util.ArrayDeque<ByteArray>()
     private var bridgeWriteInFlight = false
+    private var bridgeWriteReady = false
     private var bridgeWriteRunner: Runnable? = null
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
@@ -1741,6 +1742,7 @@ class MainActivity : Activity() {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 bridgeWriteQueue.clear()
                 bridgeWriteInFlight = false
+                bridgeWriteReady = false
                 bridgeRxCharacteristic = null
                 bridgeStatusCharacteristic = null
                 sessions.values.forEach { session ->
@@ -1799,6 +1801,7 @@ class MainActivity : Activity() {
             val canNotify = bridgeStatus != null &&
                 (bridgeStatus.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
                     BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
+            bridgeWriteReady = true
             if (canNotify) {
                 try {
                     g.setCharacteristicNotification(bridgeStatus, true)
@@ -1807,14 +1810,16 @@ class MainActivity : Activity() {
                         val value = if ((bridgeStatus.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
                             BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                         else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                        if (Build.VERSION.SDK_INT >= 33) {
-                            g.writeDescriptor(descriptor, value)
+                        bridgeWriteReady = false
+                        val accepted = if (Build.VERSION.SDK_INT >= 33) {
+                            g.writeDescriptor(descriptor, value) == BluetoothGatt.GATT_SUCCESS
                         } else {
                             @Suppress("DEPRECATION")
                             descriptor.value = value
                             @Suppress("DEPRECATION")
                             g.writeDescriptor(descriptor)
                         }
+                        if (!accepted) bridgeWriteReady = true
                     }
                 } catch (_: Exception) {}
             }
@@ -1842,9 +1847,11 @@ class MainActivity : Activity() {
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (g !== bridgeGatt || descriptor.uuid != cccdUUID) return
+            bridgeWriteReady = true
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { this@MainActivity.status.text = "Firelight Bridge підключено · статус активний" }
             }
+            handler.post { drainBridgeWriteQueue() }
         }
 
         override fun onCharacteristicWrite(
@@ -2310,7 +2317,7 @@ class MainActivity : Activity() {
     private fun drainBridgeWriteQueue() {
         val activeGatt = bridgeGatt ?: return
         val rx = bridgeRxCharacteristic ?: return
-        if (bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
+        if (!bridgeWriteReady || bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
         val frame = bridgeWriteQueue.peekFirst() ?: return
         try {
             val result = if (Build.VERSION.SDK_INT >= 33) {
@@ -2420,7 +2427,7 @@ class MainActivity : Activity() {
             d.stripOn=false;d.stripStateKnown=false
             clearBleWriteQueue(d)
         }
-        bridgeWriteQueue.clear(); bridgeWriteInFlight=false
+        bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false
         bridgeWriteRunner?.let { handler.removeCallbacks(it) }
         bridgeWriteRunner=null
         val oldBridge=bridgeGatt
