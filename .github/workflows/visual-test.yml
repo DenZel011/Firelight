@@ -1,0 +1,62 @@
+name: Visual layout check
+
+on:
+  push:
+    branches: ["visual-check/container-top-gap"]
+
+permissions:
+  contents: write
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build APK
+        run: gradle assembleDebug
+      - name: Run app in Android emulator and capture screen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb shell wm size 412x915
+            adb shell wm density 420
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm grant com.denzel.firelight android.permission.ACCESS_FINE_LOCATION || true
+            adb shell pm grant com.denzel.firelight android.permission.BLUETOOTH_SCAN || true
+            adb shell pm grant com.denzel.firelight android.permission.BLUETOOTH_CONNECT || true
+            adb shell am start -n com.denzel.firelight/.MainActivity
+            sleep 8
+            adb shell screencap -p /sdcard/firelight.png
+            adb pull /sdcard/firelight.png /tmp/firelight.png
+            mkdir -p visual-test
+            cp /tmp/firelight.png visual-test/firelight.png
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add visual-test/firelight.png
+            git commit -m "Add temporary emulator screenshot"
+            git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firelight-emulator-screen
+          path: visual-test/firelight.png
