@@ -1821,7 +1821,9 @@ class MainActivity : Activity() {
                         }
                         if (!accepted) bridgeWriteReady = true
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                    bridgeWriteReady = true
+                }
             }
 
             // Preserve MELK's two original initialization packets, target 0x01.
