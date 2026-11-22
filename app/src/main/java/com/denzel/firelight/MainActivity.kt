@@ -378,11 +378,7 @@ class MainActivity : Activity() {
             setLit(stripOn)
         }
         // The power control is moved between the header and brightness row per tab.
-        colorCard.addView(colorHeader, LinearLayout.LayoutParams(-1, dp(52)).apply {
-            // Keep the button's full 40dp touch target while reducing the
-            // header's occupied vertical space by 12dp.
-            bottomMargin = -dp(12)
-        })
+        colorCard.addView(colorHeader, LinearLayout.LayoutParams(-1, dp(52)))
         val colorHeaderBottomGap = View(this)
         colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(0)))
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
@@ -1036,13 +1032,20 @@ class MainActivity : Activity() {
             colorCard.setPadding(dp(12), dp(if (showColorPicker) 0 else 12), dp(12), dp(if (showColorPicker) 2 else 12))
             colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            colorTitle.translationY = if (showColorPicker) -dp(6).toFloat() else 0f
+            (colorHeader.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+                params.bottomMargin = if (showColorPicker) -dp(12) else 0
+                colorHeader.layoutParams = params
+            }
             brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
             (bulbButton.parent as? LinearLayout)?.removeView(bulbButton)
             if (powerBesideSlider) {
+                bulbButton.translationY = 0f
                 brightnessSliderRow?.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
                     marginStart = dp(10)
                 })
             } else {
+                bulbButton.translationY = -dp(6).toFloat()
                 colorHeader.addView(bulbButton, FrameLayout.LayoutParams(dp(40), dp(40), android.view.Gravity.TOP or android.view.Gravity.END).apply {
                     topMargin = dp(12)
                 })
