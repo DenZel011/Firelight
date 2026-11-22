@@ -726,7 +726,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
         }
-        musicModeScroll.addView(musicModeIcons, ViewGroup.LayoutParams(-1, -2))
+        musicModeScroll.addView(musicModeIcons, android.view.ViewGroup.LayoutParams(-1, -2))
         musicHeader.addView(musicModeScroll, LinearLayout.LayoutParams(0, dp(40), 1f))
         musicCard.addView(musicHeader, LinearLayout.LayoutParams(-1, dp(40)))
         val musicContent = LinearLayout(this).apply {
@@ -745,7 +745,6 @@ class MainActivity : Activity() {
         val musicName = text(musicPresets[0].name, 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
-        addGap(musicContent, 4)
         musicContent.addView(musicName, LinearLayout.LayoutParams(-1, -2))
         musicCard.addView(musicContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         musicPage.addView(musicCard, LinearLayout.LayoutParams(-1, 0, 1f))
