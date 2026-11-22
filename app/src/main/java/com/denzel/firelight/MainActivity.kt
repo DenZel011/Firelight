@@ -1613,15 +1613,13 @@ class MainActivity : Activity() {
         status.text = if (discoverAll) "Шукаю BLE-пристрої поблизу..." else "Шукаю додані пристрої..."
         scanning = true
         try {
-            // The bridge advertises its service UUID. Never scan for the strip MACs.
-            val filters = listOf(ScanFilter.Builder().setServiceUuid(
-                android.os.ParcelUuid(serviceUUID)
-            ).build())
+            // Scan without a controller-side UUID filter: some Android BLE stacks
+            // omit advertised service UUIDs from filtered scan results.
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
-            activeScanner.startScan(filters, settings, scanCallback)
+            activeScanner.startScan(null, settings, scanCallback)
             handler.removeCallbacks(scanTimeout)
             handler.postDelayed(scanTimeout, 12000L)
         } catch (e: SecurityException) {
@@ -1638,7 +1636,11 @@ class MainActivity : Activity() {
             val address = try { result.device.address.uppercase() } catch (_: SecurityException) { "" }
             if (address.isBlank()) return
             val advertisesBridge = result.scanRecord?.serviceUuids?.any { it.uuid == serviceUUID } == true
-            if (!advertisesBridge) return
+            val advertisedName = try {
+                result.scanRecord?.deviceName ?: result.device.name.orEmpty()
+            } catch (_: SecurityException) { "" }
+            val hasBridgeName = advertisedName.contains("Firelight Bridge", ignoreCase = true)
+            if (!advertisesBridge && !hasBridgeName) return
             runOnUiThread {
                 discoveredDevices[address] = DiscoveredBle(result.device, "Firelight Bridge", result.rssi)
                 refreshDiscoveryDialog?.invoke()
