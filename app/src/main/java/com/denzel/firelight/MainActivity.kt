@@ -377,8 +377,8 @@ class MainActivity : Activity() {
             clipChildren = false
             clipToPadding = false
         }
-        colorHeader.addView(text("КОЛІР СВІТІННЯ", 11f, muted, true),
-            LinearLayout.LayoutParams(0, -2, 1f))
+        val colorTitle = text("КОЛІР СВІТІННЯ", 11f, muted, true)
+        colorHeader.addView(colorTitle, LinearLayout.LayoutParams(0, -2, 1f))
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
@@ -391,7 +391,8 @@ class MainActivity : Activity() {
         })
         colorCard.addView(colorHeader)
         addGap(colorCard, 2)
-        colorCard.addView(text("Обери свій відтінок", 17f, Color.WHITE, true))
+        val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
+        colorCard.addView(pickerLabel)
         addGap(colorCard, 8)
 
         val wheelFrame = FrameLayout(this).apply {
@@ -441,8 +442,14 @@ class MainActivity : Activity() {
 
         addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
             brightness = it
-            selectedSessions().forEach { it.brightness=brightness }
-            selectedSessions().filter { it.mode == EffectMode.NONE }.forEach { sendRGBTo(it,it.red,it.green,it.blue) }
+            selectedSessions().forEach { d ->
+                d.brightness = brightness
+                if (d.isMelk) {
+                    sendMelkBrightness(d, brightness)
+                } else if (d.mode == EffectMode.NONE) {
+                    sendRGBTo(d, d.red, d.green, d.blue)
+                }
+            }
         }
         root.addView(colorCard)
         addGap(root, 12)
@@ -574,6 +581,7 @@ class MainActivity : Activity() {
         sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
+        addGap(sceneCard, 8)
         addModernSlider(sceneCard, "Швидкість", sceneSpeed, 100, "%", 2) { value ->
             sceneSpeed = value.coerceIn(0, 100)
             sceneSpeedPercent = sceneSpeed
@@ -878,6 +886,11 @@ class MainActivity : Activity() {
         val navItems = mutableListOf<LinearLayout>()
 
         fun selectTab(index: Int) {
+            val showColorPicker = index != 3 && index != 4
+            colorTitle.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            pickerLabel.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            wheelFrame.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            preview.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             pageHost.removeAllViews()
             when (index) {
                 0 -> pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
@@ -1696,6 +1709,13 @@ class MainActivity : Activity() {
         writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
     }
 
+    private fun sendMelkBrightness(session: DeviceSession, value: Int) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x04, 0x01, value.coerceIn(0, 100).toByte(),
+            0x01, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+    }
+
     private fun sendMelkMicEnabled(session: DeviceSession, enabled: Boolean) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x07, if (enabled) 0x01 else 0x00,
@@ -1814,7 +1834,7 @@ class MainActivity : Activity() {
 
     private fun sendRGBTo(d:DeviceSession,r:Int,g:Int,b:Int) {
         if(!d.connected||d.characteristic==null||d.gatt==null)return
-        val factor=d.brightness/100.0
+        val factor=if (d.isMelk) 1.0 else d.brightness/100.0
         val rr=(r*factor).toInt().coerceIn(0,255);val gg=(g*factor).toInt().coerceIn(0,255);val bb=(b*factor).toInt().coerceIn(0,255)
         d.pending=if(d.isMelk) byteArrayOf(0x7E,0,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0,0xEF.toByte())
             else byteArrayOf(0x7E,7,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0x10,0xEF.toByte())
