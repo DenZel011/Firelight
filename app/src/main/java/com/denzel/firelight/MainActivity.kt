@@ -568,16 +568,12 @@ class MainActivity : Activity() {
         sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val sceneSpeedCard = card().apply {
-            setPadding(dp(12), dp(10), dp(12), dp(4))
-        }
-        addModernSlider(sceneSpeedCard, "Швидкість ефекту", sceneSpeed, 100, "%", 2) { value ->
+        addModernSlider(sceneCard, "Швидкість", sceneSpeed, 100, "%", 2) { value ->
             sceneSpeed = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
                 sendMelkModeSpeed(d, sceneSpeed)
             }
         }
-        scenePage.addView(sceneSpeedCard, LinearLayout.LayoutParams(-1, -2))
 
         fun applyScene(index: Int) {
             val preset = scenePresets[index]
@@ -1479,8 +1475,10 @@ class MainActivity : Activity() {
 
     private fun sendMelkScene(session: DeviceSession, sceneId: Int) {
         if (!session.isMelk || !session.connected) return
-        val packet = byteArrayOf(0x7E, 0x07, 0x31, sceneId.toByte(), 0xFF.toByte(),
-            0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        // MELK-OA21 scene frame (confirmed from the OA21 protocol capture):
+        // 7E 05 31 <scene> 07 FF FF 01 EF
+        val packet = byteArrayOf(0x7E, 0x05, 0x31, sceneId.toByte(), 0x07,
+            0xFF.toByte(), 0xFF.toByte(), 0x01, 0xEF.toByte())
         writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
     }
 
