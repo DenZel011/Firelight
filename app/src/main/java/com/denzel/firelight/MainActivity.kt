@@ -716,6 +716,363 @@ class MainActivity : Activity() {
             }
         }
 
+
+        // MELK catalogue: names, IDs and groups are taken directly from Magic Lantern 6.11.10.
+        data class MelkEffect(val id: Int, val name: String, val group: String, val isScene: Boolean)
+        val melkEffects = listOf(
+            MelkEffect(1, "Sunrise", "Scenes", true),
+            MelkEffect(2, "Sunset", "Scenes", true),
+            MelkEffect(3, "Birthday", "Scenes", true),
+            MelkEffect(4, "Candlelight", "Scenes", true),
+            MelkEffect(5, "Fireworks", "Scenes", true),
+            MelkEffect(6, "Party", "Scenes", true),
+            MelkEffect(7, "Datiny", "Scenes", true),
+            MelkEffect(8, "Starry sky", "Scenes", true),
+            MelkEffect(9, "Romantic", "Scenes", true),
+            MelkEffect(10, "Disco", "Scenes", true),
+            MelkEffect(11, "Rainbow", "Scenes", true),
+            MelkEffect(12, "Movie", "Scenes", true),
+            MelkEffect(13, "Christmas", "Scenes", true),
+            MelkEffect(14, "Flowing", "Scenes", true),
+            MelkEffect(15, "Sleeping", "Scenes", true),
+            MelkEffect(16, "Ocean", "Scenes", true),
+            MelkEffect(17, "Forest", "Scenes", true),
+            MelkEffect(18, "Reading", "Scenes", true),
+            MelkEffect(19, "Working", "Scenes", true),
+            MelkEffect(20, "Dazzle", "Scenes", true),
+            MelkEffect(21, "Gentle", "Scenes", true),
+            MelkEffect(22, "Wedding", "Scenes", true),
+            MelkEffect(23, "Snow", "Scenes", true),
+            MelkEffect(24, "Fire", "Scenes", true),
+            MelkEffect(25, "Lightning", "Scenes", true),
+            MelkEffect(26, "Valentine's Day", "Scenes", true),
+            MelkEffect(27, "Hallowmas", "Scenes", true),
+            MelkEffect(28, "Warnning", "Scenes", true),
+            MelkEffect(0, "Auto Play", "Basic", false),
+            MelkEffect(1, "Magic Forward", "Basic", false),
+            MelkEffect(2, "Magic Back", "Basic", false),
+            MelkEffect(3, "7-Color Trans", "Trans", false),
+            MelkEffect(4, "7-Color Trans Back", "Trans", false),
+            MelkEffect(5, "R-G-B Trans", "Trans", false),
+            MelkEffect(6, "R-G-B Trans Back", "Trans", false),
+            MelkEffect(7, "Y-C-P Trans", "Trans", false),
+            MelkEffect(8, "Y-C-P Trans Back", "Trans", false),
+            MelkEffect(9, "6-Color to Red", "Trans", false),
+            MelkEffect(10, "6-Color to Red Back", "Trans", false),
+            MelkEffect(11, "6-Color to Green", "Trans", false),
+            MelkEffect(12, "6-Color to Green Back", "Trans", false),
+            MelkEffect(13, "6-Color to Blue", "Trans", false),
+            MelkEffect(14, "6-Color to Blue Back", "Trans", false),
+            MelkEffect(15, "6-Color to Cyan", "Trans", false),
+            MelkEffect(16, "6-Color to Cyan Back", "Trans", false),
+            MelkEffect(17, "6-Color to Yellow", "Trans", false),
+            MelkEffect(18, "6-Color to Yellow Back", "Trans", false),
+            MelkEffect(19, "6-Color to Purple", "Trans", false),
+            MelkEffect(20, "6-Color to Purple Back", "Trans", false),
+            MelkEffect(21, "6-Color to White", "Trans", false),
+            MelkEffect(22, "6-Color to White Back", "Trans", false),
+            MelkEffect(23, "7-Color Tail", "Tail", false),
+            MelkEffect(24, "7-Color Tail Back", "Tail", false),
+            MelkEffect(25, "Red Tail", "Tail", false),
+            MelkEffect(26, "Red Tail Back", "Tail", false),
+            MelkEffect(27, "Green Tail", "Tail", false),
+            MelkEffect(28, "Green Tail Back", "Tail", false),
+            MelkEffect(29, "Blue Tail", "Tail", false),
+            MelkEffect(30, "Blue Tail Back", "Tail", false),
+            MelkEffect(31, "Yellow Tail", "Tail", false),
+            MelkEffect(32, "Yellow Tail Back", "Tail", false),
+            MelkEffect(33, "Cyan Tail", "Tail", false),
+            MelkEffect(34, "Cyan Tail Back", "Tail", false),
+            MelkEffect(35, "Purple Tail", "Tail", false),
+            MelkEffect(36, "Purple Tail Back", "Tail", false),
+            MelkEffect(37, "White Tail", "Tail", false),
+            MelkEffect(38, "White Tail Back", "Tail", false),
+            MelkEffect(39, "7-Color Water", "Water", false),
+            MelkEffect(40, "7-Color Water Back", "Water", false),
+            MelkEffect(41, "R-G-B Water", "Water", false),
+            MelkEffect(42, "R-G-B Water Back", "Water", false),
+            MelkEffect(43, "Y-C-P Water", "Water", false),
+            MelkEffect(44, "Y-C-P Water Back", "Water", false),
+            MelkEffect(45, "R-G Water", "Water", false),
+            MelkEffect(46, "R-G Water Back", "Water", false),
+            MelkEffect(47, "G-B Water", "Water", false),
+            MelkEffect(48, "G-B Water Back", "Water", false),
+            MelkEffect(49, "Y-B Water", "Water", false),
+            MelkEffect(50, "Y-B Water Back", "Water", false),
+            MelkEffect(51, "Y-C Water", "Water", false),
+            MelkEffect(52, "Y-C Water Back", "Water", false),
+            MelkEffect(53, "C-P Water", "Water", false),
+            MelkEffect(54, "C-P Water Back", "Water", false),
+            MelkEffect(55, "White Water", "Water", false),
+            MelkEffect(56, "White Water Back", "Water", false),
+            MelkEffect(57, "7-Color Close", "Curtain", false),
+            MelkEffect(58, "7-Color Open", "Curtain", false),
+            MelkEffect(59, "R-G-B Close", "Curtain", false),
+            MelkEffect(60, "R-G-B Open", "Curtain", false),
+            MelkEffect(61, "Y-C-P Close", "Curtain", false),
+            MelkEffect(62, "Y-C-P Open", "Curtain", false),
+            MelkEffect(63, "Red Close", "Curtain", false),
+            MelkEffect(64, "Red Open", "Curtain", false),
+            MelkEffect(65, "Green Close", "Curtain", false),
+            MelkEffect(66, "Green Open", "Curtain", false),
+            MelkEffect(67, "Blue Close", "Curtain", false),
+            MelkEffect(68, "Blue Open", "Curtain", false),
+            MelkEffect(69, "Yellow Close", "Curtain", false),
+            MelkEffect(70, "Yellow Open", "Curtain", false),
+            MelkEffect(71, "Cyan Close", "Curtain", false),
+            MelkEffect(72, "Cyan Open", "Curtain", false),
+            MelkEffect(73, "Purple Close", "Curtain", false),
+            MelkEffect(74, "Purple Open", "Curtain", false),
+            MelkEffect(75, "White Close", "Curtain", false),
+            MelkEffect(76, "White Open", "Curtain", false),
+            MelkEffect(77, "7-Color Race", "Basic", false),
+            MelkEffect(78, "7-Color Race Back", "Basic", false),
+            MelkEffect(79, "R-G-B Race", "Basic", false),
+            MelkEffect(80, "R-G-B Race Back", "Basic", false),
+            MelkEffect(81, "Y-C-P Race", "Basic", false),
+            MelkEffect(82, "Y-C-P Race Back", "Basic", false),
+            MelkEffect(83, "7-Color Wave", "Basic", false),
+            MelkEffect(84, "7-Color Wave Back", "Basic", false),
+            MelkEffect(85, "R-G-B Wave", "Basic", false),
+            MelkEffect(86, "R-G-B Wave Back", "Basic", false),
+            MelkEffect(87, "Y-C-P Wave", "Basic", false),
+            MelkEffect(88, "Y-C-P Wave Back", "Basic", false),
+            MelkEffect(89, "Red Running", "Run", false),
+            MelkEffect(90, "Red Run Back", "RunBack", false),
+            MelkEffect(91, "Green Running", "Run", false),
+            MelkEffect(92, "Green Run Back", "RunBack", false),
+            MelkEffect(93, "Blue Running", "Run", false),
+            MelkEffect(94, "Blue Run Back", "RunBack", false),
+            MelkEffect(95, "Yellow Running", "Run", false),
+            MelkEffect(96, "Yellow Run Back", "RunBack", false),
+            MelkEffect(97, "Cyan Running", "Run", false),
+            MelkEffect(98, "Cyan Run Back", "RunBack", false),
+            MelkEffect(99, "Purple Running", "Run", false),
+            MelkEffect(100, "Purple Run Back", "RunBack", false),
+            MelkEffect(101, "White Running", "Run", false),
+            MelkEffect(102, "White Run Back", "RunBack", false),
+            MelkEffect(103, "7-Color Running", "Run", false),
+            MelkEffect(104, "7-Color Run Back", "RunBack", false),
+            MelkEffect(105, "R-G-B Running", "Run", false),
+            MelkEffect(106, "R-G-B Run Back", "RunBack", false),
+            MelkEffect(107, "Y-C-P Running", "Run", false),
+            MelkEffect(108, "Y-C-P Run Back", "RunBack", false),
+            MelkEffect(109, "B-P-C-Y Running", "Run", false),
+            MelkEffect(110, "B-P-C-Y Run Back", "RunBack", false),
+            MelkEffect(111, "B-G-C-Y Running", "Run", false),
+            MelkEffect(112, "B-G-C-Y Run Back", "RunBack", false),
+            MelkEffect(113, "Red-Dot in White Running", "Run", false),
+            MelkEffect(114, "Red-Dot in White Run Back", "RunBack", false),
+            MelkEffect(115, "Green-Dot in Red Running", "Run", false),
+            MelkEffect(116, "Green-Dot in Red Run Back", "RunBack", false),
+            MelkEffect(117, "Blue-Dot in Green Running", "Run", false),
+            MelkEffect(118, "Blue-Dot in Green Run Back", "RunBack", false),
+            MelkEffect(119, "Yellow-Dot in Blue Running", "Run", false),
+            MelkEffect(120, "Yellow-Dot in Blue Run Back", "RunBack", false),
+            MelkEffect(121, "Cyan-Dot in Yellow Running", "Run", false),
+            MelkEffect(122, "Cyan-Dot in Yellow Run Back", "RunBack", false),
+            MelkEffect(123, "Purple-Dot in Cyan Running", "Run", false),
+            MelkEffect(124, "Purple-Dot in Cyan Run Back", "RunBack", false),
+            MelkEffect(125, "White-Dot in Purple Running", "Run", false),
+            MelkEffect(126, "White-Dot in Purple Run Back", "RunBack", false),
+            MelkEffect(127, "White-Dot in Red Running", "Run", false),
+            MelkEffect(128, "White-Dot in Red Run Back", "RunBack", false),
+            MelkEffect(129, "7-Color in Red Running", "Run", false),
+            MelkEffect(130, "7-Color in Red Run Back", "RunBack", false),
+            MelkEffect(131, "7-Color in Green Running", "Run", false),
+            MelkEffect(132, "7-Color in Green Run Back", "RunBack", false),
+            MelkEffect(133, "7-Color in Blue Running", "Run", false),
+            MelkEffect(134, "7-Color in Blue Run Back", "RunBack", false),
+            MelkEffect(135, "7-Color in Yellow Running", "Run", false),
+            MelkEffect(136, "7-Color in Yellow Run Back", "RunBack", false),
+            MelkEffect(137, "7-Color in Cyan Running", "Run", false),
+            MelkEffect(138, "7-Color in Cyan Run Back", "RunBack", false),
+            MelkEffect(139, "7-Color in Purple Running", "Run", false),
+            MelkEffect(140, "7-Color in Purple Run Back", "RunBack", false),
+            MelkEffect(141, "7-Color in White Running", "Run", false),
+            MelkEffect(142, "7-Color in White Run Back", "RunBack", false),
+            MelkEffect(143, "W-R-W Flow", "Flow", false),
+            MelkEffect(144, "W-R-W Flow Back", "Flow", false),
+            MelkEffect(145, "W-G-W Flow", "Flow", false),
+            MelkEffect(146, "W-G-W Flow Back", "Flow", false),
+            MelkEffect(147, "W-B-W Flow", "Flow", false),
+            MelkEffect(148, "W-B-W Flow Back", "Flow", false),
+            MelkEffect(149, "W-Y-W Flow", "Flow", false),
+            MelkEffect(150, "W-Y-W Flow Back", "Flow", false),
+            MelkEffect(151, "W-C-W Flow", "Flow", false),
+            MelkEffect(152, "W-C-W Flow Back", "Flow", false),
+            MelkEffect(153, "W-P-W Flow", "Flow", false),
+            MelkEffect(154, "W-P-W Flow Back", "Flow", false),
+            MelkEffect(155, "R-W-R Flow", "Flow", false),
+            MelkEffect(156, "R-W-R Flow Back", "Flow", false),
+            MelkEffect(157, "G-W-G Flow", "Flow", false),
+            MelkEffect(158, "G-W-G Flow Back", "Flow", false),
+            MelkEffect(159, "B-W-B Flow", "Flow", false),
+            MelkEffect(160, "B-W-B Flow Back", "Flow", false),
+            MelkEffect(161, "Y-W-Y Flow", "Flow", false),
+            MelkEffect(162, "Y-W-Y Flow Back", "Flow", false),
+            MelkEffect(163, "C-W-C Flow", "Flow", false),
+            MelkEffect(164, "C-W-C Flow Back", "Flow", false),
+            MelkEffect(165, "P-W-P Flow", "Flow", false),
+            MelkEffect(166, "P-W-P Flow Back", "Flow", false),
+            MelkEffect(167, "Green-Dot in Blue Running", "Run", false),
+            MelkEffect(168, "Green-Dot in Blue Run Back", "RunBack", false),
+            MelkEffect(169, "Green-Dot in Red Running", "Run", false),
+            MelkEffect(170, "Green-Dot in Red Run Back", "RunBack", false),
+            MelkEffect(171, "Red-Dot in Blue Running", "Run", false),
+            MelkEffect(172, "Red-Dot in Blue Run Back", "RunBack", false),
+            MelkEffect(173, "Cyan-Dot in Yellow Running", "Run", false),
+            MelkEffect(174, "Cyan-Dot in Yellow Run Back", "RunBack", false),
+            MelkEffect(175, "Yellow-Dot in Purple Running", "Run", false),
+            MelkEffect(176, "Yellow-Dot in Purple Run Back", "RunBack", false),
+            MelkEffect(177, "White-Dot in Yelllow Running", "Run", false),
+            MelkEffect(178, "White-Dot in Yelllow Run Back", "RunBack", false),
+            MelkEffect(179, "Yellow-Dot in White Running", "Run", false),
+            MelkEffect(180, "Yellow-Dot in White Run Back", "RunBack", false),
+            MelkEffect(181, "7-Color Flush", "Basic", false),
+            MelkEffect(182, "7-Color Flush Back", "Basic", false),
+            MelkEffect(183, "R-G-B Flush", "Basic", false),
+            MelkEffect(184, "R-G-B Flush Back", "Basic", false),
+            MelkEffect(185, "Y-C-P Flush", "Basic", false),
+            MelkEffect(186, "Y-C-P Flush Back", "Basic", false),
+            MelkEffect(187, "7-Color Flush Close", "Basic", false),
+            MelkEffect(188, "7-Color Flush Open", "Basic", false),
+            MelkEffect(189, "R-G-B Flush Close", "Basic", false),
+            MelkEffect(190, "R-G-B Flush Open", "Basic", false),
+            MelkEffect(191, "Y-C-P Flush Close", "Basic", false),
+            MelkEffect(192, "Y-C-P Flush Open", "Basic", false),
+            MelkEffect(193, "7-Color Jump", "Basic", false),
+            MelkEffect(194, "R-G-B Jump", "Basic", false),
+            MelkEffect(195, "Y-C-P Jump", "Basic", false),
+            MelkEffect(196, "7-Color Strobe", "Basic", false),
+            MelkEffect(197, "R-G-B Strobe", "Basic", false),
+            MelkEffect(198, "Y-C-P Strobe", "Basic", false),
+            MelkEffect(199, "7-Color Gradual", "Basic", false),
+            MelkEffect(200, "R-Y Gradual", "Basic", false),
+            MelkEffect(201, "R-P Gradual", "Basic", false),
+            MelkEffect(202, "G-C Gradual", "Basic", false),
+            MelkEffect(203, "G-Y Gradual", "Basic", false),
+            MelkEffect(204, "B-P Gradual", "Basic", false),
+            MelkEffect(205, "Red Marquee", "Basic", false),
+            MelkEffect(206, "Green Marquee", "Basic", false),
+            MelkEffect(207, "Blue Marquee", "Basic", false),
+            MelkEffect(208, "Yellow Marquee", "Basic", false),
+            MelkEffect(209, "Cyan Marquee", "Basic", false),
+            MelkEffect(210, "Purple Marquee", "Basic", false),
+            MelkEffect(211, "White Marquee", "Basic", false),
+            MelkEffect(212, "7-Color Energy", "Basic", false)
+        )
+        val melkCategories = listOf("Scenes", "Basic", "Curtain", "Trans", "Water", "Flow", "Tail", "Run", "RunBack")
+        var melkSelectedCategory = "Scenes"
+        var melkSpeed = 50
+        val melkScenePage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(8))
+        }
+        val melkCatalogueCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val melkCategoryScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+        }
+        val melkCategoryRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        melkCategoryScroll.addView(melkCategoryRow)
+        melkCatalogueCard.addView(melkCategoryScroll, LinearLayout.LayoutParams(-1, dp(42)))
+        val melkSelectedTitle = text("Sunrise", 21f, Color.WHITE, true).apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(12))
+        }
+        melkCatalogueCard.addView(melkSelectedTitle, LinearLayout.LayoutParams(-1, -2))
+        val melkEffectsScroll = ScrollView(this).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+        }
+        val melkEffectsList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        melkEffectsScroll.addView(melkEffectsList)
+        melkCatalogueCard.addView(melkEffectsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        melkScenePage.addView(melkCatalogueCard, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        fun applyMelkEffect(effect: MelkEffect) {
+            val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+            if (targets.isEmpty()) {
+                Toast.makeText(this@MainActivity, "Спочатку підключи MELK", Toast.LENGTH_SHORT).show()
+                return
+            }
+            sceneSpeedPercent = melkSpeed
+            targets.forEach { d ->
+                stopActiveEffect(d)
+                if (!d.stripOn) {
+                    d.stripOn = true
+                    d.stripStateKnown = true
+                    sendPowerCommand(d, true)
+                }
+                handler.postDelayed({
+                    if (d.connected && d.stripOn) {
+                        if (effect.isScene) sendMelkScene(d, effect.id) else sendMelkMode(d, effect.id)
+                        handler.postDelayed({
+                            if (d.connected && d.stripOn) sendMelkModeSpeed(d, melkSpeed)
+                        }, 100L)
+                    }
+                }, 120L)
+            }
+            melkSelectedTitle.text = "${effect.name}  ·  #${effect.id}"
+            refreshEffectButtons()
+            activateSelectedSession()
+        }
+
+        fun renderMelkCategory(category: String) {
+            melkSelectedCategory = category
+            melkCategoryRow.removeAllViews()
+            melkCategories.forEach { item ->
+                val chip = text(item, 12f, if (item == category) Color.rgb(255, 142, 105) else Color.WHITE, true).apply {
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dp(12), 0, dp(12), 0)
+                    background = rounded(
+                        if (item == category) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                        12,
+                        if (item == category) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+                    )
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { renderMelkCategory(item) }
+                }
+                melkCategoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply {
+                    marginEnd = dp(6)
+                })
+            }
+            melkEffectsList.removeAllViews()
+            val entries = if (category == "Scenes") melkEffects.filter { it.isScene }
+                else melkEffects.filter { !it.isScene && it.group == category }
+            entries.forEach { effect ->
+                val item = text("${effect.name}    ·    #${effect.id}", 14f, Color.WHITE, false).apply {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(11), dp(12), dp(11))
+                    background = rounded(Color.rgb(27, 31, 41), 10, Color.TRANSPARENT)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { applyMelkEffect(effect) }
+                }
+                melkEffectsList.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                    bottomMargin = dp(5)
+                })
+            }
+        }
+        renderMelkCategory(melkSelectedCategory)
+        addModernSlider(melkScenePage, "Швидкість", melkSpeed, 100, "%", 2) { value ->
+            melkSpeed = value.coerceIn(0, 100)
+            sceneSpeedPercent = melkSpeed
+            selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
+                sendMelkModeSpeed(d, melkSpeed)
+            }
+        }
+
         // Native sound-reactive modes of the controller microphone.
         data class MusicPreset(val id: Int, val name: String, val symbol: String)
         val musicPresets = listOf(
@@ -940,8 +1297,13 @@ class MainActivity : Activity() {
                 0 -> pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
                 2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
                 3 -> {
-                    pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
-                    applyScene(selectedSceneIndex)
+                    if (selectedSessions().any { it.isMelk }) {
+                        pageHost.addView(melkScenePage, FrameLayout.LayoutParams(-1, -1))
+                        renderMelkCategory(melkSelectedCategory)
+                    } else {
+                        pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
+                        applyScene(selectedSceneIndex)
+                    }
                 }
                 4 -> {
                     pageHost.addView(musicPage, FrameLayout.LayoutParams(-1, -1))
