@@ -44,7 +44,7 @@ class MainActivity : Activity() {
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
         var speed: Int = 15, var spread: Int = 0, var rainbowSpeed: Int = 15,
         var fillSpeed: Int = 50, var fillSpeedRunner: Runnable? = null,
-        var catalogRunner: Runnable? = null, var catalogHardwareMode: Int = -1,
+        var catalogRunner: Runnable? = null, var catalogEffectId: Int = -1, var catalogHardwareMode: Int = -1,
         var catalogPalette: IntArray = intArrayOf(), var catalogStyle: BleCatalogStyle = BleCatalogStyle.JUMP,
         var catalogSpeed: Int = 50,
         var phase: Float = 0f, var lastTick: Long = 0L,
@@ -784,16 +784,17 @@ class MainActivity : Activity() {
                 if (d.isMelk) {
                     stopActiveEffect(d)
                     d.mode = EffectMode.CATALOG
+                    d.catalogEffectId = effect.id
                     if (!d.stripOn) {
                         d.stripOn = true
                         d.stripStateKnown = true
                         sendPowerCommand(d, true)
                     }
                     handler.postDelayed({
-                        if (d.connected && d.stripOn && d.mode == EffectMode.CATALOG) {
+                        if (d.connected && d.stripOn && d.mode == EffectMode.CATALOG && d.catalogEffectId == effect.id) {
                             sendMelkMode(d, effect.id)
                             handler.postDelayed({
-                                if (d.connected && d.stripOn && d.mode == EffectMode.CATALOG)
+                                if (d.connected && d.stripOn && d.mode == EffectMode.CATALOG && d.catalogEffectId == effect.id)
                                     sendMelkModeSpeed(d, effectSpeed)
                             }, 100L)
                         }
@@ -848,7 +849,7 @@ class MainActivity : Activity() {
         addModernSlider(effectsCard, "Швидкість", effectSpeed, 100, "%", 2) { value ->
             effectSpeed = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
-                if (d.mode == EffectMode.CATALOG) sendMelkModeSpeed(d, effectSpeed)
+                sendMelkModeSpeed(d, effectSpeed)
             }
             selectedSessions().filter { !it.isMelk && it.connected && it.stripOn && it.mode == EffectMode.CATALOG }.forEach { d ->
                 d.catalogSpeed = effectSpeed
@@ -2039,6 +2040,7 @@ class MainActivity : Activity() {
     private fun startBleCatalogEffect(session: DeviceSession, effectId: Int, effectName: String, speed: Int) {
         stopActiveEffect(session)
         session.mode = EffectMode.CATALOG
+        session.catalogEffectId = effectId
         val spec = mapBleCatalogEffect(effectId, effectName)
         session.catalogHardwareMode = spec.hardwareMode
         session.catalogPalette = spec.palette
@@ -2050,12 +2052,14 @@ class MainActivity : Activity() {
             sendPowerCommand(session, true)
         }
         handler.postDelayed({
-            if (!session.connected || !session.stripOn || session.mode != EffectMode.CATALOG) return@postDelayed
+            if (!session.connected || !session.stripOn || session.mode != EffectMode.CATALOG ||
+                session.catalogEffectId != effectId) return@postDelayed
             if (session.catalogHardwareMode >= 0) {
                 sendBleBrightness(session, session.brightness)
                 sendBleMode(session, session.catalogHardwareMode)
                 handler.postDelayed({
-                    if (session.connected && session.stripOn && session.mode == EffectMode.CATALOG)
+                    if (session.connected && session.stripOn && session.mode == EffectMode.CATALOG &&
+                        session.catalogEffectId == effectId)
                         sendBleModeSpeed(session, session.catalogSpeed)
                 }, 80L)
             } else {
@@ -2241,6 +2245,7 @@ class MainActivity : Activity() {
         d.fillSpeedRunner?.let{handler.removeCallbacks(it)}
         d.catalogRunner?.let{handler.removeCallbacks(it)}
         d.catalogRunner = null
+        d.catalogEffectId = -1
         d.catalogHardwareMode = -1
         d.catalogPalette = intArrayOf()
         if (d.isMelk && d.micEnabled) sendMelkMicEnabled(d, false)
