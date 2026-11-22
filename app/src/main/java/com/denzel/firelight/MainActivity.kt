@@ -506,7 +506,7 @@ class MainActivity : Activity() {
 
         // MELK catalogue: names, IDs and groups are taken directly from Magic Lantern 6.11.10.
         data class MelkEffect(val id: Int, val name: String, val group: String)
-        val melkEffects = listOf(
+        val catalogEffects = listOf(
             MelkEffect(0, "Auto Play", "Basic"),
             MelkEffect(1, "Magic Forward", "Basic"),
             MelkEffect(2, "Magic Back", "Basic"),
@@ -721,44 +721,44 @@ class MainActivity : Activity() {
             MelkEffect(211, "White Marquee", "Basic"),
             MelkEffect(212, "7-Color Energy", "Basic")
         )
-        val melkCategories = listOf("Basic", "Curtain", "Trans", "Water", "Flow", "Tail", "Run", "RunBack")
-        var melkSelectedCategory = "Basic"
-        var melkSpeed = 50
-        val melkScenePage = LinearLayout(this).apply {
+        val effectCategories = listOf("Basic", "Curtain", "Trans", "Water", "Flow", "Tail", "Run", "RunBack")
+        var selectedEffectCategory = "Basic"
+        var effectSpeed = 50
+        val effectsPage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(2), 0, dp(8))
         }
-        val melkCatalogueCard = card().apply {
+        val effectsCard = card().apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
-        val melkCategoryScroll = HorizontalScrollView(this).apply {
+        val categoryScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             clipToPadding = false
         }
-        val melkCategoryRow = LinearLayout(this).apply {
+        val categoryRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
-        melkCategoryScroll.addView(melkCategoryRow)
-        melkCatalogueCard.addView(melkCategoryScroll, LinearLayout.LayoutParams(-1, dp(42)))
-        val melkSelectedTitle = text("Auto Play  ·  #0", 21f, Color.WHITE, true).apply {
+        categoryScroll.addView(categoryRow)
+        effectsCard.addView(categoryScroll, LinearLayout.LayoutParams(-1, dp(42)))
+        val selectedEffectTitle = text("Auto Play  ·  #0", 21f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
             setPadding(0, dp(8), 0, dp(12))
         }
-        melkCatalogueCard.addView(melkSelectedTitle, LinearLayout.LayoutParams(-1, -2))
-        val melkEffectsScroll = ScrollView(this).apply {
+        effectsCard.addView(selectedEffectTitle, LinearLayout.LayoutParams(-1, -2))
+        val effectsScroll = ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = true
         }
-        val melkEffectsList = LinearLayout(this).apply {
+        val effectsList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-        melkEffectsScroll.addView(melkEffectsList)
-        melkCatalogueCard.addView(melkEffectsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        melkScenePage.addView(melkCatalogueCard, LinearLayout.LayoutParams(-1, 0, 1f))
+        effectsScroll.addView(effectsList)
+        effectsCard.addView(effectsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        effectsPage.addView(effectsCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        fun applyMelkEffect(effect: MelkEffect) {
+        fun applyCatalogEffect(effect: MelkEffect) {
             val selected = selectedSessions()
             val targets = selected.filter { it.isMelk && it.connected && it.characteristic != null }
             if (targets.isEmpty()) {
@@ -778,20 +778,20 @@ class MainActivity : Activity() {
                     if (d.connected && d.stripOn) {
                         sendMelkMode(d, effect.id)
                         handler.postDelayed({
-                            if (d.connected && d.stripOn) sendMelkModeSpeed(d, melkSpeed)
+                            if (d.connected && d.stripOn) sendMelkModeSpeed(d, effectSpeed)
                         }, 100L)
                     }
                 }, 120L)
             }
-            melkSelectedTitle.text = "${effect.name}  ·  #${effect.id}"
+            selectedEffectTitle.text = "${effect.name}  ·  #${effect.id}"
             refreshEffectButtons()
             activateSelectedSession()
         }
 
-        fun renderMelkCategory(category: String) {
-            melkSelectedCategory = category
-            melkCategoryRow.removeAllViews()
-            melkCategories.forEach { item ->
+        fun renderEffectCategory(category: String) {
+            selectedEffectCategory = category
+            categoryRow.removeAllViews()
+            effectCategories.forEach { item ->
                 val chip = text(item, 12f, if (item == category) Color.rgb(255, 142, 105) else Color.WHITE, true).apply {
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(12), 0, dp(12), 0)
@@ -802,14 +802,14 @@ class MainActivity : Activity() {
                     ))
                     isClickable = true
                     isFocusable = true
-                    setOnClickListener { renderMelkCategory(item) }
+                    setOnClickListener { renderEffectCategory(item) }
                 }
-                melkCategoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply {
+                categoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply {
                     marginEnd = dp(6)
                 })
             }
-            melkEffectsList.removeAllViews()
-            val entries = melkEffects.filter { it.group == category }
+            effectsList.removeAllViews()
+            val entries = catalogEffects.filter { it.group == category }
             entries.forEach { effect ->
                 val item = text("${effect.name}    ·    #${effect.id}", 14f, Color.WHITE, false).apply {
                     gravity = android.view.Gravity.CENTER_VERTICAL
@@ -817,18 +817,18 @@ class MainActivity : Activity() {
                     setBackground(rounded(Color.rgb(27, 31, 41), 10, Color.TRANSPARENT))
                     isClickable = true
                     isFocusable = true
-                    setOnClickListener { applyMelkEffect(effect) }
+                    setOnClickListener { applyCatalogEffect(effect) }
                 }
-                melkEffectsList.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                effectsList.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
                     bottomMargin = dp(5)
                 })
             }
         }
-        renderMelkCategory(melkSelectedCategory)
-        addModernSlider(melkCatalogueCard, "Швидкість", melkSpeed, 100, "%", 2) { value ->
-            melkSpeed = value.coerceIn(0, 100)
+        renderEffectCategory(selectedEffectCategory)
+        addModernSlider(effectsCard, "Швидкість", effectSpeed, 100, "%", 2) { value ->
+            effectSpeed = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
-                sendMelkModeSpeed(d, melkSpeed)
+                sendMelkModeSpeed(d, effectSpeed)
             }
         }
 
@@ -1022,7 +1022,7 @@ class MainActivity : Activity() {
             setPadding(dp(3), dp(7), dp(3), dp(4))
             setBackground(rounded(Color.rgb(18, 21, 29), 20, Color.rgb(35, 41, 54)))
         }
-        val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Сцени", "Музика", "Конструктор")
+        val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Режими", "Музика", "Конструктор")
         val navGlyphs = listOf("", "≋", "◉", "✦", "♪", "⌘")
         val navItems = mutableListOf<LinearLayout>()
 
@@ -1056,8 +1056,8 @@ class MainActivity : Activity() {
                 0 -> pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
                 2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
                 3 -> {
-                    pageHost.addView(melkScenePage, FrameLayout.LayoutParams(-1, -1))
-                    renderMelkCategory(melkSelectedCategory)
+                    pageHost.addView(effectsPage, FrameLayout.LayoutParams(-1, -1))
+                    renderEffectCategory(selectedEffectCategory)
                 }
                 4 -> {
                     pageHost.addView(musicPage, FrameLayout.LayoutParams(-1, -1))
