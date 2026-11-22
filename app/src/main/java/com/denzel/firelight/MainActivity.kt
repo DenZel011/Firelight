@@ -742,7 +742,7 @@ class MainActivity : Activity() {
         }
         melkCategoryScroll.addView(melkCategoryRow)
         melkCatalogueCard.addView(melkCategoryScroll, LinearLayout.LayoutParams(-1, dp(42)))
-        val melkSelectedTitle = text("Sunrise", 21f, Color.WHITE, true).apply {
+        val melkSelectedTitle = text("Auto Play  ·  #0", 21f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
             setPadding(0, dp(8), 0, dp(12))
         }
