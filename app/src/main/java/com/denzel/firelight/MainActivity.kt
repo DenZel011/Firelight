@@ -1029,7 +1029,7 @@ class MainActivity : Activity() {
             selectedTabIndex = index
             val showColorPicker = index != 3 && index != 4
             val powerBesideSlider = index == 3 || index == 4
-            colorCard.setPadding(dp(12), dp(if (showColorPicker) 0 else 12), dp(12), dp(if (showColorPicker) 2 else 12))
+            colorCard.setPadding(dp(12), dp(if (showColorPicker) 0 else 4), dp(12), dp(if (showColorPicker) 2 else 12))
             colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
@@ -1040,7 +1040,7 @@ class MainActivity : Activity() {
                 })
             } else {
                 colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                    topMargin = dp(12)
+                    topMargin = dp(4)
                 })
             }
             val musicBrightnessLocked = index == 4
