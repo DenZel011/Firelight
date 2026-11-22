@@ -825,6 +825,7 @@ class MainActivity : Activity() {
             }
         }
         renderEffectCategory(selectedEffectCategory)
+        addGap(effectsCard, 8)
         addModernSlider(effectsCard, "Швидкість", effectSpeed, 100, "%", 2) { value ->
             effectSpeed = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
@@ -1721,6 +1722,8 @@ class MainActivity : Activity() {
                 session.stripOn = false
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
                 runOnUiThread {
+                    selectedDeviceAddresses.add(session.address)
+                    if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = session.address
                     activateSelectedSession()
                 }
                 try { g.discoverServices() } catch (_: SecurityException) {}
