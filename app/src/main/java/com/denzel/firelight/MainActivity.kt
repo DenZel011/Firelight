@@ -367,7 +367,7 @@ class MainActivity : Activity() {
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         val colorCard = card().apply {
-            setPadding(dp(12), dp(2), dp(12), dp(6))
+            setPadding(dp(12), dp(12), dp(12), dp(6))
             clipChildren = false
             clipToPadding = false
         }
@@ -383,9 +383,9 @@ class MainActivity : Activity() {
             setLit(stripOn)
         }
         // The power control is moved between the header and brightness row per tab.
-        addGap(colorCard, 6)
         colorCard.addView(colorHeader)
-        addGap(colorCard, 6)
+        val colorHeaderBottomGap = View(this)
+        colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(2)))
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
         colorCard.addView(pickerLabel)
         addGap(colorCard, 8)
@@ -420,6 +420,7 @@ class MainActivity : Activity() {
         var brightnessSlider: ModernSliderView? = null
         var brightnessValueView: TextView? = null
         var brightnessTitleView: TextView? = null
+        var brightnessValueSpacer: View? = null
         var selectedTabIndex = 0
 
         fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, trailingView: View? = null, changed: (Int) -> Unit) {
@@ -431,13 +432,16 @@ class MainActivity : Activity() {
             val valueView = text("$initial$suffix", 13f, Color.WHITE, true)
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             line.addView(valueView)
-            if (trailingView != null) line.addView(View(this), LinearLayout.LayoutParams(dp(50), 1))
+            if (trailingView != null && title == "Яскравість") {
+                brightnessValueSpacer = View(this)
+                line.addView(brightnessValueSpacer, LinearLayout.LayoutParams(dp(50), 1))
+            }
             if (title == "Яскравість") {
                 brightnessTitleView = titleView
                 brightnessValueView = valueView
             }
             parent.addView(line)
-            addGap(parent, 7)
+            addGap(parent, if (title == "Яскравість") 3 else 7)
             val slider = ModernSliderView(this, initial, maxValue) { value ->
                 valueView.text = "$value$suffix"
                 changed(value)
@@ -910,6 +914,10 @@ class MainActivity : Activity() {
             selectedTabIndex = index
             val showColorPicker = index != 3 && index != 4
             val powerBesideSlider = index == 3 || index == 4
+            colorCard.setPadding(dp(12), dp(if (showColorPicker) 12 else 0), dp(12), dp(6))
+            colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
+            brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
             (bulbButton.parent as? LinearLayout)?.removeView(bulbButton)
             if (powerBesideSlider) {
                 brightnessSliderRow?.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
