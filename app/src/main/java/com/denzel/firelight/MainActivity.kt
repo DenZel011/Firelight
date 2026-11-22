@@ -607,9 +607,6 @@ class MainActivity : Activity() {
                     }, 120L)
                 } else {
                     d.mode = EffectMode.SCENE
-                    handler.postDelayed({
-                        if (d.connected && d.stripOn && d.mode == EffectMode.SCENE) startSceneAnimation(preset.id, preset.isScene)
-                    }, 160L)
                 }
             }
             if (targets.any { !it.isMelk }) startSceneAnimation(preset.id, preset.isScene)
