@@ -1639,7 +1639,8 @@ class MainActivity : Activity() {
             val advertisedName = try {
                 result.scanRecord?.deviceName ?: result.device.name.orEmpty()
             } catch (_: SecurityException) { "" }
-            val hasBridgeName = advertisedName.contains("Firelight Bridge", ignoreCase = true)
+            val hasBridgeName = advertisedName.contains("Firelight Bridge", ignoreCase = true) ||
+                advertisedName.contains("Firelight Test", ignoreCase = true)
             if (!advertisesBridge && !hasBridgeName) return
             runOnUiThread {
                 discoveredDevices[address] = DiscoveredBle(result.device, "Firelight Bridge", result.rssi)
