@@ -382,9 +382,10 @@ class MainActivity : Activity() {
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        // The power control is placed beside the brightness slider below.
+        // The power control is moved between the header and brightness row per tab.
+        addGap(colorCard, 6)
         colorCard.addView(colorHeader)
-        addGap(colorCard, 2)
+        addGap(colorCard, 6)
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
         colorCard.addView(pickerLabel)
         addGap(colorCard, 8)
@@ -415,6 +416,12 @@ class MainActivity : Activity() {
         tuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
         addGap(tuningCard, 7)
 
+        var brightnessSliderRow: LinearLayout? = null
+        var brightnessSlider: ModernSliderView? = null
+        var brightnessValueView: TextView? = null
+        var brightnessTitleView: TextView? = null
+        var selectedTabIndex = 0
+
         fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, trailingView: View? = null, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -424,12 +431,18 @@ class MainActivity : Activity() {
             val valueView = text("$initial$suffix", 13f, Color.WHITE, true)
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             line.addView(valueView)
+            if (trailingView != null) line.addView(View(this), LinearLayout.LayoutParams(dp(50), 1))
+            if (title == "Яскравість") {
+                brightnessTitleView = titleView
+                brightnessValueView = valueView
+            }
             parent.addView(line)
             addGap(parent, 7)
             val slider = ModernSliderView(this, initial, maxValue) { value ->
                 valueView.text = "$value$suffix"
                 changed(value)
             }
+            if (title == "Яскравість") brightnessSlider = slider
             if (trailingView == null) {
                 parent.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
             } else {
@@ -439,8 +452,9 @@ class MainActivity : Activity() {
                 }
                 sliderRow.addView(slider, LinearLayout.LayoutParams(0, dp(26), 1f))
                 sliderRow.addView(trailingView, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                    marginStart = dp(8)
+                    marginStart = dp(10)
                 })
+                if (title == "Яскравість") brightnessSliderRow = sliderRow
                 parent.addView(sliderRow, LinearLayout.LayoutParams(-1, dp(40)))
             }
             addGap(parent, bottomGap)
@@ -448,11 +462,12 @@ class MainActivity : Activity() {
 
         addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2, bulbButton) {
             brightness = it
+            if (selectedTabIndex == 4) return@addModernSlider
             selectedSessions().forEach { d ->
                 d.brightness = brightness
-                if (d.isMelk) {
+                if (d.isMelk && d.mode != EffectMode.MIC) {
                     sendMelkBrightness(d, brightness)
-                } else if (d.mode == EffectMode.NONE) {
+                } else if (!d.isMelk && d.mode == EffectMode.NONE) {
                     sendRGBTo(d, d.red, d.green, d.blue)
                 }
             }
@@ -892,7 +907,22 @@ class MainActivity : Activity() {
         val navItems = mutableListOf<LinearLayout>()
 
         fun selectTab(index: Int) {
+            selectedTabIndex = index
             val showColorPicker = index != 3 && index != 4
+            val powerBesideSlider = index == 3 || index == 4
+            (bulbButton.parent as? LinearLayout)?.removeView(bulbButton)
+            if (powerBesideSlider) {
+                brightnessSliderRow?.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                    marginStart = dp(10)
+                })
+            } else {
+                colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+            }
+            val musicBrightnessLocked = index == 4
+            brightnessSlider?.isEnabled = !musicBrightnessLocked
+            brightnessSlider?.alpha = if (musicBrightnessLocked) 0.4f else 1f
+            brightnessTitleView?.alpha = if (musicBrightnessLocked) 0.45f else 1f
+            brightnessValueView?.alpha = if (musicBrightnessLocked) 0.45f else 1f
             colorTitle.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             pickerLabel.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             wheelFrame.visibility = if (showColorPicker) View.VISIBLE else View.GONE
@@ -2289,6 +2319,7 @@ private class ModernSliderView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!isEnabled) return false
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
