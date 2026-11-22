@@ -368,7 +368,7 @@ class MainActivity : Activity() {
         }
         val colorHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = android.view.Gravity.TOP
             clipChildren = false
             clipToPadding = false
         }
