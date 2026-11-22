@@ -2270,7 +2270,8 @@ class MainActivity : Activity() {
         val factor=if (d.isMelk) 1.0 else d.brightness/100.0
         val rr=(r*factor).toInt().coerceIn(0,255);val gg=(g*factor).toInt().coerceIn(0,255);val bb=(b*factor).toInt().coerceIn(0,255)
         d.pending=if(d.isMelk) byteArrayOf(0x7E,0,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0,0xEF.toByte())
-            else byteArrayOf(0x7E,7,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0x10,0xEF.toByte())
+            else byteArrayOf(0x7E,7,5,3,rr.toByte(),gg.toByte(),bb.toByte(),
+                (if (d.mode == EffectMode.CATALOG) 0x20 else 0x10).toByte(),0xEF.toByte())
         ensureRunners(d)
         if(!d.flushQueued) {
             d.flushQueued=true
