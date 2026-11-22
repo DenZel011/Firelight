@@ -382,13 +382,7 @@ class MainActivity : Activity() {
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
-        // Preserve the 40dp button and the header's total height while
-        // restoring visual space above the bulb inside the existing layout.
-        colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-            topMargin = dp(8)
-            bottomMargin = dp(-8)
-            marginEnd = dp(8)
-        })
+        // The power control is placed beside the brightness slider below.
         colorCard.addView(colorHeader)
         addGap(colorCard, 2)
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
@@ -421,7 +415,7 @@ class MainActivity : Activity() {
         tuningCard.addView(text("СВІТЛОВІ ЕФЕКТИ", 11f, muted, true))
         addGap(tuningCard, 7)
 
-        fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, changed: (Int) -> Unit) {
+        fun addModernSlider(parent: LinearLayout, title: String, initial: Int, maxValue: Int, suffix: String, bottomGap: Int = 8, trailingView: View? = null, changed: (Int) -> Unit) {
             val line = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -436,11 +430,23 @@ class MainActivity : Activity() {
                 valueView.text = "$value$suffix"
                 changed(value)
             }
-            parent.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
+            if (trailingView == null) {
+                parent.addView(slider, LinearLayout.LayoutParams(-1, dp(26)))
+            } else {
+                val sliderRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                sliderRow.addView(slider, LinearLayout.LayoutParams(0, dp(26), 1f))
+                sliderRow.addView(trailingView, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                    marginStart = dp(8)
+                })
+                parent.addView(sliderRow, LinearLayout.LayoutParams(-1, dp(40)))
+            }
             addGap(parent, bottomGap)
         }
 
-        addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2) {
+        addModernSlider(colorCard, "Яскравість", brightness, 100, "%", 2, bulbButton) {
             brightness = it
             selectedSessions().forEach { d ->
                 d.brightness = brightness
@@ -563,8 +569,8 @@ class MainActivity : Activity() {
 
         val sceneContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(4), 0, 0)
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 0, 0, 0)
             isClickable = true
             clipChildren = false
             clipToPadding = false
@@ -578,7 +584,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
         }
         sceneContent.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
-        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
+        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f))
         scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         addGap(sceneCard, 8)
@@ -739,8 +745,8 @@ class MainActivity : Activity() {
         musicCard.addView(musicHeader, LinearLayout.LayoutParams(-1, dp(40)))
         val musicContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(4), 0, 0)
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 0, 0, 0)
             isClickable = true
             clipChildren = false
             clipToPadding = false
@@ -754,7 +760,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER
         }
         musicContent.addView(musicName, LinearLayout.LayoutParams(-1, -2))
-        musicCard.addView(musicContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
+        musicCard.addView(musicContent, LinearLayout.LayoutParams(-1, 0, 1f))
         musicPage.addView(musicCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun styleMusicIcon(view: TextView, active: Boolean) {
@@ -1712,8 +1718,16 @@ class MainActivity : Activity() {
     private fun sendMelkBrightness(session: DeviceSession, value: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x01, value.coerceIn(0, 100).toByte(),
-            0x01, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+            0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        // Coalesce slider updates and respect the MELK write interval so rapid
+        // dragging cannot flood the BLE write-without-response queue.
+        session.pending = packet
+        ensureRunners(session)
+        if (!session.flushQueued) {
+            session.flushQueued = true
+            handler.postDelayed(session.flushRunner!!,
+                (100L - (SystemClock.uptimeMillis() - session.lastWrite)).coerceAtLeast(0L))
+        }
     }
 
     private fun sendMelkMicEnabled(session: DeviceSession, enabled: Boolean) {
