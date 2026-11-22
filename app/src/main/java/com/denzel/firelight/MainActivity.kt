@@ -1982,7 +1982,8 @@ class MainActivity : Activity() {
 
         val style = when {
             name.contains("-Dot in") || name.contains("7-Color in") -> BleCatalogStyle.ALTERNATE
-            name.contains("Strobe") || name.contains("Marquee") -> BleCatalogStyle.STROBE
+            name.contains("Strobe") || name.contains("Marquee") ||
+                (name.contains("Run Back") && bleColorIndex(name) >= 0) -> BleCatalogStyle.STROBE
             name.contains("Running") || name.contains("Run Back") || name.contains("Race") ||
                 name.contains("Jump") || name.contains("Flush") || name.contains("Energy") ||
                 name.contains("Magic Forward") || name.contains("Magic Back") -> BleCatalogStyle.JUMP
