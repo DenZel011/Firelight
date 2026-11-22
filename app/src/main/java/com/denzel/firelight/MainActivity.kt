@@ -712,7 +712,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
-        musicHeader.addView(text("МІКРОФОН MELK", 11f, muted, true),
+        musicHeader.addView(text("МУЗИКА MELK", 11f, muted, true),
             LinearLayout.LayoutParams(-2, dp(40)))
         val musicModeScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -839,7 +839,7 @@ class MainActivity : Activity() {
                 sendMelkMicSensitivity(d, musicSensitivity)
             }
         }
-        musicButton = actionButton("Мікрофон MELK", true) {
+        musicButton = actionButton("Увімкнути музику", true) {
             val targets = selectedSessions().filter { it.isMelk }
             if (targets.isEmpty()) {
                 Toast.makeText(this, "Обери підключений MELK-OA21", Toast.LENGTH_SHORT).show()
@@ -1882,7 +1882,7 @@ class MainActivity : Activity() {
         if(::rainbowButton.isInitialized) rainbowButton.text=if(modes.size!=1||ds.isEmpty())"Змішаний стан" else if(modes[0]==EffectMode.RAINBOW)"Вимкнути веселку" else "Увімкнути веселку"
         if(::musicButton.isInitialized) {
             val melkModes = ds.filter { it.isMelk }.map { it.mode }.distinct()
-            musicButton.text = if (melkModes.size == 1 && melkModes[0] == EffectMode.MIC) "Вимкнути мікрофон" else "Мікрофон MELK"
+            musicButton.text = if (melkModes.size == 1 && melkModes[0] == EffectMode.MIC) "Вимкнути музику" else "Увімкнути музику"
         }
     }
 
