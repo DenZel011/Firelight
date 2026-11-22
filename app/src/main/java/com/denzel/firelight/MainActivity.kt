@@ -1826,13 +1826,8 @@ class MainActivity : Activity() {
                 }
             }
 
-            // Preserve MELK's two original initialization packets, target 0x01.
-            writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x07, 0x83.toByte()), true)
-            handler.postDelayed({
-                if (bridgeGatt === g && sessions[melkAddress.uppercase()]?.connected == true) {
-                    writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x04, 0x04), true)
-                }
-            }, 140L)
+            // The Arduino initializes MELK itself immediately after its
+            // peripheral connection; these short 3-byte packets are not bridge frames.
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
