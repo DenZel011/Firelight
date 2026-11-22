@@ -362,7 +362,7 @@ class MainActivity : Activity() {
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         val colorCard = card().apply {
-            setPadding(dp(12), dp(12), dp(12), dp(6))
+            setPadding(dp(12), dp(0), dp(12), dp(2))
             clipChildren = false
             clipToPadding = false
         }
@@ -436,7 +436,7 @@ class MainActivity : Activity() {
                 brightnessValueView = valueView
             }
             parent.addView(line)
-            addGap(parent, if (title == "Яскравість") 3 else 7)
+            addGap(parent, if (title == "Яскравість") 0 else 7)
             val slider = ModernSliderView(this, initial, maxValue) { value ->
                 valueView.text = "$value$suffix"
                 changed(value)
@@ -1030,7 +1030,7 @@ class MainActivity : Activity() {
             selectedTabIndex = index
             val showColorPicker = index != 3 && index != 4
             val powerBesideSlider = index == 3 || index == 4
-            colorCard.setPadding(dp(12), dp(12), dp(12), dp(if (powerBesideSlider) 12 else 6))
+            colorCard.setPadding(dp(12), dp(if (showColorPicker) 0 else 12), dp(12), dp(if (showColorPicker) 2 else 12))
             colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
