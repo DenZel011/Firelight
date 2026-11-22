@@ -366,19 +366,23 @@ class MainActivity : Activity() {
             clipChildren = false
             clipToPadding = false
         }
-        val colorHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
+        val colorHeader = FrameLayout(this).apply {
             clipChildren = false
             clipToPadding = false
         }
-        val colorTitle = text("КОЛІР СВІТІННЯ", 11f, muted, true)
-        colorHeader.addView(colorTitle, LinearLayout.LayoutParams(0, -2, 1f))
+        val colorTitle = text("КОЛІР СВІТІННЯ", 11f, muted, true).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+        }
+        colorHeader.addView(colorTitle, FrameLayout.LayoutParams(-1, dp(40), android.view.Gravity.TOP or android.view.Gravity.START))
         bulbButton = BulbToggleView(this) { toggleStrip() }.apply {
             setLit(stripOn)
         }
         // The power control is moved between the header and brightness row per tab.
-        colorCard.addView(colorHeader)
+        colorCard.addView(colorHeader, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            // Keep the button's full 40dp touch target while reducing the
+            // header's occupied vertical space by 12dp.
+            bottomMargin = -dp(12)
+        })
         val colorHeaderBottomGap = View(this)
         colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(0)))
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
@@ -1039,7 +1043,7 @@ class MainActivity : Activity() {
                     marginStart = dp(10)
                 })
             } else {
-                colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                colorHeader.addView(bulbButton, FrameLayout.LayoutParams(dp(40), dp(40), android.view.Gravity.TOP or android.view.Gravity.END).apply {
                     topMargin = dp(12)
                 })
             }
