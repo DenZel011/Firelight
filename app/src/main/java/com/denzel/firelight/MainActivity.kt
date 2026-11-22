@@ -1034,11 +1034,11 @@ class MainActivity : Activity() {
                 val chip = text(item, 12f, if (item == category) Color.rgb(255, 142, 105) else Color.WHITE, true).apply {
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(12), 0, dp(12), 0)
-                    background = rounded(
+                    setBackground(rounded(
                         if (item == category) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
                         12,
                         if (item == category) Color.rgb(105, 62, 55) else Color.TRANSPARENT
-                    )
+                    ))
                     isClickable = true
                     isFocusable = true
                     setOnClickListener { renderMelkCategory(item) }
@@ -1054,7 +1054,7 @@ class MainActivity : Activity() {
                 val item = text("${effect.name}    ·    #${effect.id}", 14f, Color.WHITE, false).apply {
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(11), dp(12), dp(11))
-                    background = rounded(Color.rgb(27, 31, 41), 10, Color.TRANSPARENT)
+                    setBackground(rounded(Color.rgb(27, 31, 41), 10, Color.TRANSPARENT))
                     isClickable = true
                     isFocusable = true
                     setOnClickListener { applyMelkEffect(effect) }
