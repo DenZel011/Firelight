@@ -475,117 +475,198 @@ class MainActivity : Activity() {
             setPadding(0, dp(2), 0, dp(8))
         }
 
-        val standardModes = listOf(
-            1 to "Стрибки кольорів",
-            2 to "Стробоскоп",
-            3 to "Дихання",
-            4 to "Попередження"
+        data class ScenePreset(val id: Int, val name: String, val symbol: String, val isScene: Boolean)
+        val scenePresets = listOf(
+            ScenePreset(1, "Стрибки кольорів", "✦", false),
+            ScenePreset(2, "Стробоскоп", "⚡", false),
+            ScenePreset(3, "Дихання", "◉", false),
+            ScenePreset(4, "Попередження", "⚠", false),
+            ScenePreset(1, "Схід сонця", "☀", true),
+            ScenePreset(2, "Захід сонця", "◒", true),
+            ScenePreset(3, "День народження", "★", true),
+            ScenePreset(4, "Свічка", "♨", true),
+            ScenePreset(5, "Феєрверки", "✺", true),
+            ScenePreset(6, "Вечірка", "♫", true),
+            ScenePreset(7, "Побачення", "♥", true),
+            ScenePreset(8, "Зоряне небо", "✧", true),
+            ScenePreset(9, "Романтика", "♡", true),
+            ScenePreset(10, "Диско", "✷", true),
+            ScenePreset(11, "Веселка", "◈", true),
+            ScenePreset(12, "Кіно", "▣", true),
+            ScenePreset(13, "Різдво", "❄", true),
+            ScenePreset(14, "Плин", "≈", true),
+            ScenePreset(15, "Сон", "☾", true),
+            ScenePreset(16, "Океан", "≋", true),
+            ScenePreset(17, "Ліс", "♣", true),
+            ScenePreset(18, "Читання", "▤", true),
+            ScenePreset(19, "Робота", "⌘", true),
+            ScenePreset(20, "Сяйво", "✹", true),
+            ScenePreset(21, "Ніжність", "❋", true),
+            ScenePreset(22, "Весілля", "♢", true),
+            ScenePreset(23, "Сніг", "❅", true),
+            ScenePreset(24, "Вогонь", "♨", true),
+            ScenePreset(25, "Блискавка", "ϟ", true),
+            ScenePreset(26, "День закоханих", "♥", true),
+            ScenePreset(27, "Гелловін", "☠", true),
+            ScenePreset(28, "Попередження", "⚠", true),
+            ScenePreset(150, "Машина часу", "◷", true),
+            ScenePreset(152, "Машина часу 2", "◴", true),
+            ScenePreset(154, "Метеор", "☄", true),
+            ScenePreset(155, "Метеор 2", "✦", true),
+            ScenePreset(156, "Шоу феєрверків", "✺", true)
         )
-        val standardScenes = listOf(
-            1 to "Схід сонця", 2 to "Захід сонця", 3 to "День народження",
-            4 to "Свічка", 5 to "Феєрверки", 6 to "Вечірка",
-            7 to "Побачення", 8 to "Зоряне небо", 9 to "Романтика",
-            10 to "Диско", 11 to "Веселка", 12 to "Кіно",
-            13 to "Різдво", 14 to "Плин", 15 to "Сон",
-            16 to "Океан", 17 to "Ліс", 18 to "Читання",
-            19 to "Робота", 20 to "Сяйво", 21 to "Ніжність",
-            22 to "Весілля", 23 to "Сніг", 24 to "Вогонь",
-            25 to "Блискавка", 26 to "День закоханих",
-            27 to "Гелловін", 28 to "Попередження",
-            150 to "Машина часу", 152 to "Машина часу 2",
-            154 to "Метеор", 155 to "Метеор 2", 156 to "Шоу феєрверків"
-        )
-        var selectedPresetId = -1
-        var selectedPresetIsScene = false
+        var selectedSceneIndex = 0
         var sceneSpeed = 50
 
-        val sceneScroll = ScrollView(this).apply {
-            isFillViewport = false
+        // Keep the original swipe carousel: fixed card, animated scene content,
+        // and a compact horizontally scrollable row of scene shortcuts.
+        val sceneCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(4), dp(18), dp(20))
+            clipChildren = true
+            clipToPadding = true
+        }
+        val sceneHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        sceneHeader.addView(
+            text("СЦЕНИ", 11f, muted, true).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            },
+            LinearLayout.LayoutParams(-2, dp(40))
+        )
+        val sceneModeScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
             clipToPadding = false
-            setPadding(0, 0, 0, dp(6))
         }
-        val sceneList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        sceneScroll.addView(sceneList)
-        scenePage.addView(sceneScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        fun addPresetSection(title: String, entries: List<Pair<Int, String>>, isScene: Boolean) {
-            sceneList.addView(text(title, 11f, muted, true).apply {
-                setPadding(dp(4), dp(12), 0, dp(8))
-            })
-            val grid = android.widget.GridLayout(this).apply {
-                columnCount = 2
-                useDefaultMargins = false
-                alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
-            }
-            entries.forEach { (id, label) ->
-                val presetButton = TextView(this).apply {
-                    text = label
-                    textSize = 14f
-                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(dp(7), dp(5), dp(7), dp(5))
-                    isClickable = true
-                    isFocusable = true
-                }
-                fun stylePreset(active: Boolean) {
-                    presetButton.setTextColor(if (active) Color.WHITE else Color.rgb(222, 228, 239))
-                    presetButton.background = rounded(
-                        if (active) Color.rgb(83, 48, 42) else Color.rgb(29, 34, 46),
-                        12,
-                        if (active) Color.rgb(255, 142, 105) else Color.rgb(55, 63, 80)
-                    )
-                }
-                stylePreset(false)
-                presetButton.setOnClickListener {
-                    selectedPresetId = id
-                    selectedPresetIsScene = isScene
-                    for (i in 0 until grid.childCount) {
-                        val child = grid.getChildAt(i) as? TextView ?: continue
-                        val active = child === presetButton
-                        child.setTextColor(if (active) Color.WHITE else Color.rgb(222, 228, 239))
-                        child.background = rounded(
-                            if (active) Color.rgb(83, 48, 42) else Color.rgb(29, 34, 46),
-                            12,
-                            if (active) Color.rgb(255, 142, 105) else Color.rgb(55, 63, 80)
-                        )
-                    }
-                    selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }.forEach { d ->
-                        if (!d.stripOn) {
-                            d.stripOn = true
-                            d.stripStateKnown = true
-                            sendPowerCommand(d, true)
-                        }
-                        handler.postDelayed({
-                            if (d.connected && d.stripOn) {
-                                if (isScene) sendMelkScene(d, id) else sendMelkMode(d, id)
-                                handler.postDelayed({
-                                    if (d.connected && d.stripOn) sendMelkModeSpeed(d, sceneSpeed)
-                                }, 100L)
-                            }
-                        }, 120L)
-                    }
-                }
-                val lp = android.widget.GridLayout.LayoutParams().apply {
-                    width = 0
-                    height = dp(48)
-                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                    setMargins(dp(3), dp(3), dp(3), dp(3))
-                }
-                grid.addView(presetButton, lp)
-            }
-            sceneList.addView(grid, LinearLayout.LayoutParams(-1, -2))
+        val sceneModeIcons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
         }
+        sceneModeScroll.addView(sceneModeIcons)
+        sceneHeader.addView(sceneModeScroll, LinearLayout.LayoutParams(0, dp(40), 1f))
+        sceneCard.addView(sceneHeader, LinearLayout.LayoutParams(-1, dp(40)))
 
-        addPresetSection("СТАНДАРТНІ ЕФЕКТИ", standardModes, false)
-        addPresetSection("СЦЕНИ КОНТРОЛЕРА", standardScenes, true)
-        val sceneSpeedCard = card().apply { setPadding(dp(12), dp(10), dp(12), dp(4)) }
+        val sceneContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(4), 0, 0)
+            isClickable = true
+            clipChildren = false
+            clipToPadding = false
+        }
+        val sceneSymbol = text(scenePresets[0].symbol, 60f, Color.rgb(255, 142, 105), true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneContent.addView(sceneSymbol, LinearLayout.LayoutParams(-1, dp(76)))
+        addGap(sceneContent, 4)
+        val sceneName = text(scenePresets[0].name, 23f, Color.WHITE, true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        sceneContent.addView(sceneName, LinearLayout.LayoutParams(-1, -2))
+        sceneCard.addView(sceneContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
+        scenePage.addView(sceneCard, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        val sceneSpeedCard = card().apply {
+            setPadding(dp(12), dp(10), dp(12), dp(4))
+        }
         addModernSlider(sceneSpeedCard, "Швидкість ефекту", sceneSpeed, 100, "%", 2) { value ->
             sceneSpeed = value.coerceIn(0, 100)
-            selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach {
-                sendMelkModeSpeed(it, sceneSpeed)
+            selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
+                sendMelkModeSpeed(d, sceneSpeed)
             }
         }
         scenePage.addView(sceneSpeedCard, LinearLayout.LayoutParams(-1, -2))
+
+        fun applyScene(index: Int) {
+            val preset = scenePresets[index]
+            selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }.forEach { d ->
+                if (!d.stripOn) {
+                    d.stripOn = true
+                    d.stripStateKnown = true
+                    sendPowerCommand(d, true)
+                }
+                handler.postDelayed({
+                    if (d.connected && d.stripOn) {
+                        if (preset.isScene) sendMelkScene(d, preset.id) else sendMelkMode(d, preset.id)
+                        handler.postDelayed({
+                            if (d.connected && d.stripOn) sendMelkModeSpeed(d, sceneSpeed)
+                        }, 100L)
+                    }
+                }, 120L)
+            }
+            refreshEffectButtons()
+            activateSelectedSession()
+        }
+
+        fun styleSceneIcon(view: TextView, active: Boolean) {
+            view.setTextColor(if (active) Color.rgb(255, 142, 105) else Color.WHITE)
+            view.background = rounded(
+                if (active) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                10,
+                if (active) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+            )
+        }
+
+        fun showScene(nextIndex: Int, swipeLeft: Boolean) {
+            selectedSceneIndex = (nextIndex + scenePresets.size) % scenePresets.size
+            val selected = scenePresets[selectedSceneIndex]
+            val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
+            sceneContent.animate().cancel()
+            sceneContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
+                sceneSymbol.text = selected.symbol
+                sceneSymbol.textSize = 60f
+                sceneName.text = selected.name
+                sceneContent.translationX = -exitX
+                sceneContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
+                for (i in 0 until sceneModeIcons.childCount) {
+                    val icon = sceneModeIcons.getChildAt(i) as? TextView ?: continue
+                    styleSceneIcon(icon, i == selectedSceneIndex)
+                }
+                applyScene(selectedSceneIndex)
+            }.start()
+        }
+
+        scenePresets.forEachIndexed { index, preset ->
+            val icon = text(preset.symbol, 18f, Color.WHITE, true).apply {
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    if (index != selectedSceneIndex) showScene(index, index > selectedSceneIndex)
+                }
+            }
+            styleSceneIcon(icon, index == selectedSceneIndex)
+            sceneModeIcons.addView(icon, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                marginStart = dp(1)
+                marginEnd = dp(1)
+            })
+        }
+
+        var sceneTouchStartX = 0f
+        var sceneTouchStartY = 0f
+        sceneContent.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    sceneTouchStartX = event.x
+                    sceneTouchStartY = event.y
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val deltaX = event.x - sceneTouchStartX
+                    val deltaY = event.y - sceneTouchStartY
+                    if (kotlin.math.abs(deltaX) >= dp(45) &&
+                        kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.25f) {
+                        if (deltaX < 0f) showScene(selectedSceneIndex + 1, true)
+                        else showScene(selectedSceneIndex - 1, false)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> true
+                else -> true
+            }
+        }
 
         // The bottom navigation stays visible; shared controls remain outside pageHost.
         val nav = LinearLayout(this).apply {
