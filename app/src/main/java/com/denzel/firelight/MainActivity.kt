@@ -57,7 +57,12 @@ class MainActivity : Activity() {
 
     private var connected = false
     private var fireEnabled = false
-    private enum class EffectMode { NONE, FIRE, RAINBOW, FILL }
+    private enum class EffectMode { NONE, FIRE, RAINBOW, FILL, SCENE }
+    private var activeSceneId = 1
+    private var activeSceneIsPreset = true
+    private var sceneStartedAt = 0L
+    private var sceneSpeedPercent = 50
+    private var sceneRunner: Runnable? = null
     private enum class DeviceLayout { SIMULTANEOUS, SEQUENTIAL }
     private var activeMode = EffectMode.NONE
     private var deviceLayout = DeviceLayout.SIMULTANEOUS
@@ -570,6 +575,7 @@ class MainActivity : Activity() {
 
         addModernSlider(sceneCard, "Швидкість", sceneSpeed, 100, "%", 2) { value ->
             sceneSpeed = value.coerceIn(0, 100)
+            sceneSpeedPercent = sceneSpeed
             selectedSessions().filter { it.isMelk && it.connected && it.stripOn }.forEach { d ->
                 sendMelkModeSpeed(d, sceneSpeed)
             }
@@ -577,21 +583,36 @@ class MainActivity : Activity() {
 
         fun applyScene(index: Int) {
             val preset = scenePresets[index]
-            selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }.forEach { d ->
+            val targets = selectedSessions().filter { it.connected && it.characteristic != null }
+            if (targets.isEmpty()) {
+                Toast.makeText(this@MainActivity, "Спочатку підключи пристрій", Toast.LENGTH_SHORT).show()
+                return
+            }
+            sceneSpeedPercent = sceneSpeed
+            targets.forEach { d ->
+                stopActiveEffect(d)
                 if (!d.stripOn) {
                     d.stripOn = true
                     d.stripStateKnown = true
                     sendPowerCommand(d, true)
                 }
-                handler.postDelayed({
-                    if (d.connected && d.stripOn) {
-                        if (preset.isScene) sendMelkScene(d, preset.id) else sendMelkMode(d, preset.id)
-                        handler.postDelayed({
-                            if (d.connected && d.stripOn) sendMelkModeSpeed(d, sceneSpeed)
-                        }, 100L)
-                    }
-                }, 120L)
+                if (d.isMelk) {
+                    handler.postDelayed({
+                        if (d.connected && d.stripOn) {
+                            if (preset.isScene) sendMelkScene(d, preset.id) else sendMelkMode(d, preset.id)
+                            handler.postDelayed({
+                                if (d.connected && d.stripOn) sendMelkModeSpeed(d, sceneSpeed)
+                            }, 100L)
+                        }
+                    }, 120L)
+                } else {
+                    d.mode = EffectMode.SCENE
+                    handler.postDelayed({
+                        if (d.connected && d.stripOn && d.mode == EffectMode.SCENE) startSceneAnimation(preset.id, preset.isScene)
+                    }, 160L)
+                }
             }
+            if (targets.any { !it.isMelk }) startSceneAnimation(preset.id, preset.isScene)
             refreshEffectButtons()
             activateSelectedSession()
         }
@@ -1501,6 +1522,85 @@ class MainActivity : Activity() {
         handler.postDelayed(runner, 120L)
     }
 
+    private fun startSceneAnimation(sceneId: Int, isPreset: Boolean) {
+        activeSceneId = sceneId
+        activeSceneIsPreset = isPreset
+        if (sceneStartedAt == 0L || sceneRunner == null) sceneStartedAt = SystemClock.uptimeMillis()
+        val runner = sceneRunner ?: object : Runnable {
+            override fun run() {
+                val targets = selectedSessions().filter { !it.isMelk && it.mode == EffectMode.SCENE && it.stripOn }
+                if (targets.isEmpty()) {
+                    sceneRunner = null
+                    return
+                }
+                val elapsed = (SystemClock.uptimeMillis() - sceneStartedAt).coerceAtLeast(0L) / 1000f
+                val rgb = sceneColor(activeSceneId, activeSceneIsPreset, elapsed, sceneSpeedPercent)
+                targets.forEach { sendRGBTo(it, Color.red(rgb), Color.green(rgb), Color.blue(rgb)) }
+                handler.postDelayed(this, 60L)
+            }
+        }
+        sceneRunner = runner
+        handler.removeCallbacks(runner)
+        handler.post(runner)
+    }
+
+    private fun sceneColor(id: Int, isPreset: Boolean, elapsed: Float, speed: Int): Int {
+        val rate = 0.30f + speed.coerceIn(0, 100) / 100f * 2.7f
+        val p = elapsed * rate
+        val wave = ((kotlin.math.sin(p * 2f * Math.PI.toFloat()) + 1f) * 0.5f).coerceIn(0f, 1f)
+        val pulse = ((kotlin.math.sin(p * 2.8f * Math.PI.toFloat()) + 1f) * 0.5f).coerceIn(0f, 1f)
+        fun hsv(h: Float, s: Float, v: Float): Int =
+            Color.HSVToColor(floatArrayOf(((h % 360f) + 360f) % 360f, s.coerceIn(0f, 1f), v.coerceIn(0f, 1f)))
+        fun noise(seed: Int): Float {
+            val x = kotlin.math.sin(seed * 12.9898 + id * 78.233) * 43758.5453
+            return (x - kotlin.math.floor(x)).toFloat()
+        }
+        val step = (p * 2.2f).toInt()
+        if (!isPreset) return when (id) {
+            1 -> hsv((step % 6) * 60f, 1f, 1f) // colour jumps
+            2 -> hsv(0f, 0f, if ((p * 5f).toInt() % 2 == 0) 1f else 0.015f) // strobe
+            3 -> hsv(28f, .78f, .08f + .92f * wave) // breathing
+            4 -> hsv(if ((p * 2f).toInt() % 2 == 0) 38f else 0f, 1f, if ((p * 2f).toInt() % 2 == 0) 1f else .12f)
+            else -> hsv(30f, .8f, wave)
+        }
+        return when (id) {
+            1 -> hsv(8f + 38f * wave, .95f, .10f + .90f * wave) // sunrise
+            2 -> hsv(12f + 275f * wave, .9f, .18f + .82f * wave) // sunset
+            3 -> hsv((step % 6) * 60f, .9f, if (pulse > .18f) 1f else .48f)
+            4 -> hsv(24f + noise(step) * 13f, .92f, .45f + noise(step + 7) * .42f)
+            5 -> hsv((step * 71 % 360).toFloat(), .85f, if (noise(step) > .73f) 1f else .025f + pulse * .12f)
+            6 -> hsv((p * 150f) % 360f, 1f, .55f + .45f * pulse)
+            7 -> hsv(335f + 18f * wave, .62f, .45f + .48f * pulse)
+            8 -> hsv(218f + 35f * wave, .72f, .12f + .75f * if (noise(step) > .76f) 1f else pulse * .22f)
+            9 -> hsv(320f + 22f * wave, .48f, .52f + .42f * pulse)
+            10 -> hsv((p * 210f).toInt().let { (it % 6) * 60f }, 1f, if (step % 2 == 0) 1f else .3f)
+            11 -> hsv((p * 92f) % 360f, 1f, 1f)
+            12 -> hsv(if (wave > .5f) 215f else 34f, .58f, .18f + .35f * pulse)
+            13 -> hsv(if (step % 2 == 0) 0f else 125f, .95f, .55f + .45f * pulse)
+            14 -> hsv((p * 68f + 185f * wave) % 360f, .78f, .35f + .55f * pulse)
+            15 -> hsv(225f + 22f * wave, .72f, .08f + .34f * pulse)
+            16 -> hsv(190f + 35f * wave, .88f, .25f + .70f * pulse)
+            17 -> hsv(105f + 38f * wave, .78f, .16f + .65f * pulse)
+            18 -> hsv(38f + 8f * wave, .48f, .62f + .30f * pulse)
+            19 -> hsv(205f + 12f * wave, .20f, .72f + .22f * pulse)
+            20 -> hsv((p * 105f) % 360f, .72f, if (noise(step) > .82f) 1f else .3f + .35f * pulse)
+            21 -> hsv(185f + 105f * wave, .28f, .48f + .42f * pulse)
+            22 -> hsv(42f + 300f * wave, .24f, .62f + .34f * pulse)
+            23 -> hsv(190f + 22f * wave, .22f, .58f + .40f * pulse)
+            24 -> hsv(12f + noise(step) * 28f, .98f, .34f + noise(step + 11) * .58f)
+            25 -> hsv(205f, .08f, if (noise(step) > .70f) 1f else .025f + pulse * .10f)
+            26 -> hsv(340f + 18f * wave, .9f, .42f + .55f * pulse)
+            27 -> hsv(if (step % 2 == 0) 28f else 275f, .95f, .38f + .58f * pulse)
+            28 -> hsv(if (step % 2 == 0) 38f else 0f, 1f, if (pulse > .48f) 1f else .08f)
+            150 -> hsv((p * 125f) % 360f, .9f, .25f + .72f * wave)
+            152 -> hsv((360f - (p * 105f) % 360f) % 360f, .82f, .28f + .68f * pulse)
+            154 -> hsv(205f + 18f * wave, .92f, if (noise(step) > .72f) 1f else .04f + .24f * pulse)
+            155 -> hsv(275f + 65f * wave, .82f, if (noise(step + 3) > .70f) 1f else .04f + .22f * pulse)
+            156 -> hsv((step * 47 % 360).toFloat(), .9f, if (noise(step) > .68f) 1f else .025f + .12f * pulse)
+            else -> hsv((p * 60f) % 360f, .8f, .7f)
+        }
+    }
+
     private fun sendRGBTo(d:DeviceSession,r:Int,g:Int,b:Int) {
         if(!d.connected||d.characteristic==null||d.gatt==null)return
         val factor=d.brightness/100.0
@@ -1559,6 +1659,10 @@ class MainActivity : Activity() {
         d.fireRunner?.let{handler.removeCallbacks(it)};d.rainbowRunner?.let{handler.removeCallbacks(it)}
         d.fillSpeedRunner?.let{handler.removeCallbacks(it)}
         d.mode=EffectMode.NONE
+        if (sessions.values.none { it.mode == EffectMode.SCENE }) {
+            sceneRunner?.let { handler.removeCallbacks(it) }
+            sceneRunner = null
+        }
     }
     private fun stopActiveEffect() { selectedSessions().forEach{stopActiveEffect(it)};refreshEffectButtons() }
 
