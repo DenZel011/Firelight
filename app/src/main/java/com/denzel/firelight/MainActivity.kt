@@ -367,7 +367,7 @@ class MainActivity : Activity() {
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         val colorCard = card().apply {
-            setPadding(dp(12), dp(12), dp(12), dp(6))
+            setPadding(dp(12), dp(4), dp(12), dp(6))
             clipChildren = false
             clipToPadding = false
         }
@@ -385,7 +385,7 @@ class MainActivity : Activity() {
         // The power control is moved between the header and brightness row per tab.
         colorCard.addView(colorHeader)
         val colorHeaderBottomGap = View(this)
-        colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(2)))
+        colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(0)))
         val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
         colorCard.addView(pickerLabel)
         addGap(colorCard, 8)
@@ -914,7 +914,7 @@ class MainActivity : Activity() {
             selectedTabIndex = index
             val showColorPicker = index != 3 && index != 4
             val powerBesideSlider = index == 3 || index == 4
-            colorCard.setPadding(dp(12), dp(if (showColorPicker) 12 else 0), dp(12), dp(6))
+            colorCard.setPadding(dp(12), dp(if (showColorPicker) 4 else 8), dp(12), dp(if (powerBesideSlider) 12 else 6))
             colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
