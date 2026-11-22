@@ -759,9 +759,12 @@ class MainActivity : Activity() {
         melkScenePage.addView(melkCatalogueCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun applyMelkEffect(effect: MelkEffect) {
-            val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+            val selected = selectedSessions()
+            val targets = selected.filter { it.isMelk && it.connected && it.characteristic != null }
             if (targets.isEmpty()) {
-                Toast.makeText(this@MainActivity, "Спочатку підключи MELK", Toast.LENGTH_SHORT).show()
+                val message = if (selected.isEmpty()) "Спочатку підключи пристрій"
+                    else "Стандартні режими цього каталогу доступні лише для MELK"
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                 return
             }
             targets.forEach { d ->
