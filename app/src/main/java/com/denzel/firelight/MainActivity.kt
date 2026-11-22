@@ -1635,13 +1635,9 @@ class MainActivity : Activity() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = try { result.device.address.uppercase() } catch (_: SecurityException) { "" }
             if (address.isBlank()) return
-            val advertisesBridge = result.scanRecord?.serviceUuids?.any { it.uuid == serviceUUID } == true
-            val advertisedName = try {
-                result.scanRecord?.deviceName ?: result.device.name.orEmpty()
-            } catch (_: SecurityException) { "" }
-            val hasBridgeName = advertisedName.contains("Firelight Bridge", ignoreCase = true) ||
-                advertisedName.contains("Firelight Test", ignoreCase = true)
-            if (!advertisesBridge && !hasBridgeName) return
+            // Identify the Arduino bridge by its stable BLE address; do not depend
+            // on the advertised local name or service UUID being exposed by Android.
+            if (!address.equals("20:6E:F1:2F:ED:C9", ignoreCase = true)) return
             runOnUiThread {
                 discoveredDevices[address] = DiscoveredBle(result.device, "Firelight Bridge", result.rssi)
                 refreshDiscoveryDialog?.invoke()
