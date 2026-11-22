@@ -36,6 +36,7 @@ class MainActivity : Activity() {
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
         var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
         var mode: EffectMode = EffectMode.NONE,
+        var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
         var speed: Int = 15, var spread: Int = 0, var rainbowSpeed: Int = 15,
         var fillSpeed: Int = 50, var fillSpeedRunner: Runnable? = null,
@@ -57,7 +58,7 @@ class MainActivity : Activity() {
 
     private var connected = false
     private var fireEnabled = false
-    private enum class EffectMode { NONE, FIRE, RAINBOW, FILL, SCENE }
+    private enum class EffectMode { NONE, FIRE, RAINBOW, FILL, SCENE, MIC }
     private var activeSceneId = 1
     private var activeSceneIsPreset = true
     private var sceneStartedAt = 0L
@@ -71,6 +72,7 @@ class MainActivity : Activity() {
     private var rainbowPhase = 0f
     private var rainbowLastTickAt = 0L
     private lateinit var rainbowButton: Button
+    private lateinit var musicButton: Button
     private var scanning = false
     private lateinit var deviceField: TextView
     private var devicePopup: PopupWindow? = null
@@ -682,6 +684,175 @@ class MainActivity : Activity() {
             }
         }
 
+        // MELK controller microphone: launch one of its eight native sound programs.
+        data class MusicPreset(val id: Int, val name: String, val symbol: String)
+        val musicPresets = listOf(
+            MusicPreset(1, "Flow Flash", "✦"),
+            MusicPreset(2, "Flash", "ϟ"),
+            MusicPreset(3, "Rainbow", "◈"),
+            MusicPreset(4, "Snake", "➤"),
+            MusicPreset(5, "Rainbow 2", "✧"),
+            MusicPreset(6, "Pulse", "◉"),
+            MusicPreset(7, "Flow", "≈"),
+            MusicPreset(8, "Pulse 2", "●")
+        )
+        var selectedMusicIndex = 0
+        var musicSensitivity = 50
+        val musicPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(8))
+        }
+        val musicCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(4), dp(18), dp(20))
+            clipChildren = true
+            clipToPadding = true
+        }
+        val musicHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        musicHeader.addView(text("МІКРОФОН MELK", 11f, muted, true),
+            LinearLayout.LayoutParams(-2, dp(40)))
+        val musicModeScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+        }
+        val musicModeIcons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        musicModeScroll.addView(musicModeIcons)
+        musicHeader.addView(musicModeScroll, LinearLayout.LayoutParams(0, dp(40), 1f))
+        musicCard.addView(musicHeader, LinearLayout.LayoutParams(-1, dp(40)))
+        val musicContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(4), 0, 0)
+            isClickable = true
+            clipChildren = false
+            clipToPadding = false
+        }
+        val musicSymbol = text(musicPresets[0].symbol, 60f, Color.rgb(255, 142, 105), true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        musicContent.addView(musicSymbol, LinearLayout.LayoutParams(-1, dp(76)))
+        addGap(musicContent, 4)
+        val musicName = text(musicPresets[0].name, 23f, Color.WHITE, true).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        musicContent.addView(musicName, LinearLayout.LayoutParams(-1, -2))
+        musicCard.addView(musicContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
+        musicPage.addView(musicCard, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        fun styleMusicIcon(view: TextView, active: Boolean) {
+            view.setTextColor(if (active) Color.rgb(255, 142, 105) else Color.WHITE)
+            view.background = rounded(
+                if (active) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                10,
+                if (active) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+            )
+        }
+
+        fun applyMusicProgram(index: Int) {
+            selectedMusicIndex = (index + musicPresets.size) % musicPresets.size
+            val preset = musicPresets[selectedMusicIndex]
+            val targets = selectedSessions().filter { it.isMelk && it.connected && it.characteristic != null }
+            if (targets.isEmpty()) {
+                status.text = "Для музичних режимів обери підключений MELK-OA21"
+                return
+            }
+            targets.forEach { d ->
+                stopActiveEffect(d)
+                d.mode = EffectMode.MIC
+                if (!d.stripOn) {
+                    d.stripOn = true
+                    d.stripStateKnown = true
+                    sendPowerCommand(d, true)
+                }
+                handler.postDelayed({
+                    if (d.connected && d.mode == EffectMode.MIC) {
+                        sendMelkMicEnabled(d, true)
+                        handler.postDelayed({
+                            if (d.connected && d.mode == EffectMode.MIC) {
+                                sendMelkMicEffect(d, preset.id)
+                                handler.postDelayed({
+                                    if (d.connected && d.mode == EffectMode.MIC)
+                                        sendMelkMicSensitivity(d, musicSensitivity)
+                                }, 100L)
+                            }
+                        }, 100L)
+                    }
+                }, 140L)
+            }
+            musicSymbol.text = preset.symbol
+            musicName.text = preset.name
+            for (i in 0 until musicModeIcons.childCount) {
+                val icon = musicModeIcons.getChildAt(i) as? TextView ?: continue
+                styleMusicIcon(icon, i == selectedMusicIndex)
+            }
+            refreshEffectButtons()
+            activateSelectedSession()
+        }
+
+        musicPresets.forEachIndexed { index, preset ->
+            val icon = text(preset.symbol, 18f, Color.WHITE, true).apply {
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { if (index != selectedMusicIndex) applyMusicProgram(index) }
+            }
+            styleMusicIcon(icon, index == selectedMusicIndex)
+            musicModeIcons.addView(icon, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                marginStart = dp(1)
+                marginEnd = dp(1)
+            })
+        }
+
+        var musicTouchStartX = 0f
+        var musicTouchStartY = 0f
+        musicContent.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    musicTouchStartX = event.x
+                    musicTouchStartY = event.y
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val deltaX = event.x - musicTouchStartX
+                    val deltaY = event.y - musicTouchStartY
+                    if (kotlin.math.abs(deltaX) >= dp(45) &&
+                        kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.25f) {
+                        if (deltaX < 0f) applyMusicProgram(selectedMusicIndex + 1)
+                        else applyMusicProgram(selectedMusicIndex - 1)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> true
+                else -> true
+            }
+        }
+
+        addModernSlider(musicCard, "Чутливість мікрофона", musicSensitivity, 100, "%", 2) { value ->
+            musicSensitivity = value.coerceIn(0, 100)
+            selectedSessions().filter { it.isMelk && it.mode == EffectMode.MIC }.forEach { d ->
+                sendMelkMicSensitivity(d, musicSensitivity)
+            }
+        }
+        musicButton = actionButton("Мікрофон MELK", true) {
+            val targets = selectedSessions().filter { it.isMelk }
+            if (targets.isEmpty()) {
+                Toast.makeText(this, "Обери підключений MELK-OA21", Toast.LENGTH_SHORT).show()
+            } else if (targets.all { it.mode == EffectMode.MIC }) {
+                targets.forEach { stopActiveEffect(it) }
+                refreshEffectButtons()
+            } else {
+                applyMusicProgram(selectedMusicIndex)
+            }
+        }
+        musicCard.addView(musicButton, LinearLayout.LayoutParams(-1, dp(40)))
+        addGap(musicCard, 4)
+
         // The bottom navigation stays visible; shared controls remain outside pageHost.
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -700,6 +871,11 @@ class MainActivity : Activity() {
                 2 -> pageHost.addView(rainbowPage, FrameLayout.LayoutParams(-1, -1))
                 3 -> {
                     pageHost.addView(scenePage, FrameLayout.LayoutParams(-1, -1))
+                    applyScene(selectedSceneIndex)
+                }
+                4 -> {
+                    pageHost.addView(musicPage, FrameLayout.LayoutParams(-1, -1))
+                    applyMusicProgram(selectedMusicIndex)
                 }
             }
             navItems.forEachIndexed { i, item ->
@@ -1507,6 +1683,31 @@ class MainActivity : Activity() {
         writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
     }
 
+    private fun sendMelkMicEnabled(session: DeviceSession, enabled: Boolean) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x04, 0x07, if (enabled) 0x01 else 0x00,
+            0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        session.micEnabled = enabled
+    }
+
+    private fun sendMelkMicEffect(session: DeviceSession, effect: Int) {
+        if (!session.isMelk || !session.connected) return
+        val encoded = (0x80 + (effect.coerceIn(1, 8) - 1)).toByte()
+        val packet = byteArrayOf(0x7E, 0x05, 0x03, encoded, 0x04,
+            0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        session.micEffect = effect.coerceIn(1, 8)
+    }
+
+    private fun sendMelkMicSensitivity(session: DeviceSession, sensitivity: Int) {
+        if (!session.isMelk || !session.connected) return
+        val packet = byteArrayOf(0x7E, 0x04, 0x06, sensitivity.coerceIn(0, 100).toByte(),
+            0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        session.micSensitivity = sensitivity.coerceIn(0, 100)
+    }
+
     private fun scheduleMelkModeSpeed(session: DeviceSession) {
         if (!session.isMelk || session.mode != EffectMode.FILL) return
         session.fillSpeedRunner?.let { handler.removeCallbacks(it) }
@@ -1655,6 +1856,7 @@ class MainActivity : Activity() {
     private fun stopActiveEffect(d:DeviceSession) {
         d.fireRunner?.let{handler.removeCallbacks(it)};d.rainbowRunner?.let{handler.removeCallbacks(it)}
         d.fillSpeedRunner?.let{handler.removeCallbacks(it)}
+        if (d.isMelk && d.micEnabled) sendMelkMicEnabled(d, false)
         d.mode=EffectMode.NONE
         if (sessions.values.none { it.mode == EffectMode.SCENE }) {
             sceneRunner?.let { handler.removeCallbacks(it) }
@@ -1678,6 +1880,10 @@ class MainActivity : Activity() {
         val ds=selectedSessions();val modes=ds.map{it.mode}.distinct()
         if(::fireButton.isInitialized) fireButton.text=if(modes.size!=1||ds.isEmpty())"Змішаний стан" else if(modes[0]==EffectMode.FIRE)"Вимкнути вогонь" else "Увімкнути вогонь"
         if(::rainbowButton.isInitialized) rainbowButton.text=if(modes.size!=1||ds.isEmpty())"Змішаний стан" else if(modes[0]==EffectMode.RAINBOW)"Вимкнути веселку" else "Увімкнути веселку"
+        if(::musicButton.isInitialized) {
+            val melkModes = ds.filter { it.isMelk }.map { it.mode }.distinct()
+            musicButton.text = if (melkModes.size == 1 && melkModes[0] == EffectMode.MIC) "Вимкнути мікрофон" else "Мікрофон MELK"
+        }
     }
 
     private fun toggleFire() {
