@@ -711,17 +711,22 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
-        musicHeader.addView(text("МУЗИКА", 11f, muted, true),
-            LinearLayout.LayoutParams(-2, dp(40)))
+        musicHeader.addView(
+            text("МУЗИКА", 11f, muted, true).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            },
+            LinearLayout.LayoutParams(-2, dp(40))
+        )
         val musicModeScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             clipToPadding = false
+            isFillViewport = true
         }
         val musicModeIcons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = android.view.Gravity.CENTER
         }
-        musicModeScroll.addView(musicModeIcons)
+        musicModeScroll.addView(musicModeIcons, ViewGroup.LayoutParams(-1, -2))
         musicHeader.addView(musicModeScroll, LinearLayout.LayoutParams(0, dp(40), 1f))
         musicCard.addView(musicHeader, LinearLayout.LayoutParams(-1, dp(40)))
         val musicContent = LinearLayout(this).apply {
@@ -740,6 +745,7 @@ class MainActivity : Activity() {
         val musicName = text(musicPresets[0].name, 23f, Color.WHITE, true).apply {
             gravity = android.view.Gravity.CENTER
         }
+        addGap(musicContent, 4)
         musicContent.addView(musicName, LinearLayout.LayoutParams(-1, -2))
         musicCard.addView(musicContent, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = -dp(8) })
         musicPage.addView(musicCard, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -794,12 +800,33 @@ class MainActivity : Activity() {
             activateSelectedSession()
         }
 
+        fun showMusic(nextIndex: Int, swipeLeft: Boolean) {
+            selectedMusicIndex = (nextIndex + musicPresets.size) % musicPresets.size
+            val selected = musicPresets[selectedMusicIndex]
+            val exitX = if (swipeLeft) -dp(28).toFloat() else dp(28).toFloat()
+            musicContent.animate().cancel()
+            musicContent.animate().translationX(exitX).alpha(0f).setDuration(110L).withEndAction {
+                musicSymbol.text = selected.symbol
+                musicSymbol.textSize = 60f
+                musicName.text = selected.name
+                musicContent.translationX = -exitX
+                musicContent.animate().translationX(0f).alpha(1f).setDuration(190L).start()
+                for (i in 0 until musicModeIcons.childCount) {
+                    val icon = musicModeIcons.getChildAt(i) as? TextView ?: continue
+                    styleMusicIcon(icon, i == selectedMusicIndex)
+                }
+                applyMusicProgram(selectedMusicIndex)
+            }.start()
+        }
+
         musicPresets.forEachIndexed { index, preset ->
             val icon = text(preset.symbol, 18f, Color.WHITE, true).apply {
                 gravity = android.view.Gravity.CENTER
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { if (index != selectedMusicIndex) applyMusicProgram(index) }
+                setOnClickListener {
+                    if (index != selectedMusicIndex) showMusic(index, index > selectedMusicIndex)
+                }
             }
             styleMusicIcon(icon, index == selectedMusicIndex)
             musicModeIcons.addView(icon, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
@@ -822,8 +849,8 @@ class MainActivity : Activity() {
                     val deltaY = event.y - musicTouchStartY
                     if (kotlin.math.abs(deltaX) >= dp(45) &&
                         kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.25f) {
-                        if (deltaX < 0f) applyMusicProgram(selectedMusicIndex + 1)
-                        else applyMusicProgram(selectedMusicIndex - 1)
+                        if (deltaX < 0f) showMusic(selectedMusicIndex + 1, true)
+                        else showMusic(selectedMusicIndex - 1, false)
                     }
                     true
                 }
@@ -832,6 +859,7 @@ class MainActivity : Activity() {
             }
         }
 
+        addGap(musicCard, 8)
         addModernSlider(musicCard, "Чутливість мікрофона", musicSensitivity, 100, "%", 2) { value ->
             musicSensitivity = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.mode == EffectMode.MIC }.forEach { d ->
