@@ -351,7 +351,7 @@ class MainActivity : Activity() {
         })
         connectionCard.addView(connectionActions)
         root.addView(connectionCard)
-        addGap(root, 8)
+        addGap(root, 0)
 
         val pageHost = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
