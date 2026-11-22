@@ -1038,7 +1038,7 @@ class MainActivity : Activity() {
                 colorHeader.layoutParams = params
             }
             brightnessValueSpacer?.visibility = if (powerBesideSlider) View.VISIBLE else View.GONE
-            (bulbButton.parent as? LinearLayout)?.removeView(bulbButton)
+            (bulbButton.parent as? ViewGroup)?.removeView(bulbButton)
             if (powerBesideSlider) {
                 bulbButton.translationY = 0f
                 brightnessSliderRow?.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
