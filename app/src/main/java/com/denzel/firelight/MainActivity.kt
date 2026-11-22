@@ -362,7 +362,7 @@ class MainActivity : Activity() {
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
         val colorCard = card().apply {
-            setPadding(dp(12), dp(0), dp(12), dp(2))
+            setPadding(dp(12), dp(0), dp(12), dp(0))
             clipChildren = false
             clipToPadding = false
         }
@@ -448,14 +448,13 @@ class MainActivity : Activity() {
                 val sliderRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(12), 0, 0)
                 }
                 sliderRow.addView(slider, LinearLayout.LayoutParams(0, dp(26), 1f))
                 sliderRow.addView(trailingView, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
                     marginStart = dp(10)
                 })
                 if (title == "Яскравість") brightnessSliderRow = sliderRow
-                parent.addView(sliderRow, LinearLayout.LayoutParams(-1, dp(52)))
+                parent.addView(sliderRow, LinearLayout.LayoutParams(-1, dp(if (title == "Яскравість") 40 else 52)))
             }
             addGap(parent, bottomGap)
         }
@@ -1040,7 +1039,9 @@ class MainActivity : Activity() {
                     marginStart = dp(10)
                 })
             } else {
-                colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+                colorHeader.addView(bulbButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                    topMargin = dp(12)
+                })
             }
             val musicBrightnessLocked = index == 4
             brightnessSlider?.isEnabled = !musicBrightnessLocked
