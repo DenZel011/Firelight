@@ -1033,7 +1033,7 @@ class MainActivity : Activity() {
             colorCard.setPadding(dp(12), dp(if (showColorPicker) 0 else 12), dp(12), dp(if (showColorPicker) 2 else 12))
             colorHeader.visibility = if (showColorPicker) View.VISIBLE else View.GONE
             colorHeaderBottomGap.visibility = if (showColorPicker) View.VISIBLE else View.GONE
-            colorTitle.translationY = if (showColorPicker) -dp(6).toFloat() else 0f
+            colorTitle.translationY = 0f
             (colorHeader.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
                 params.bottomMargin = if (showColorPicker) -dp(12) else 0
                 colorHeader.layoutParams = params
@@ -1046,7 +1046,7 @@ class MainActivity : Activity() {
                     marginStart = dp(10)
                 })
             } else {
-                bulbButton.translationY = -dp(6).toFloat()
+                bulbButton.translationY = 0f
                 colorHeader.addView(bulbButton, FrameLayout.LayoutParams(dp(40), dp(40), android.view.Gravity.TOP or android.view.Gravity.END).apply {
                     topMargin = dp(12)
                 })
