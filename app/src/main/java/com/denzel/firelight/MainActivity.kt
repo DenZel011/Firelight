@@ -31,7 +31,7 @@ class MainActivity : Activity() {
     private var scanner: BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
-    private enum class BleCatalogStyle { JUMP, FADE, STROBE, ALTERNATE }
+    private enum class BleCatalogStyle { JUMP, FADE, STROBE, ALTERNATE, TAIL, CURTAIN, RUN, FLUSH, ENERGY }
     private data class BleCatalogSpec(val hardwareMode: Int, val palette: IntArray, val style: BleCatalogStyle)
 
     private data class DeviceSession(
@@ -47,6 +47,9 @@ class MainActivity : Activity() {
         var catalogRunner: Runnable? = null, var catalogEffectId: Int = -1, var catalogHardwareMode: Int = -1,
         var catalogPalette: IntArray = intArrayOf(), var catalogStyle: BleCatalogStyle = BleCatalogStyle.JUMP,
         var catalogSpeed: Int = 50,
+        var bleWriteQueue: java.util.ArrayDeque<ByteArray> = java.util.ArrayDeque(),
+        var bleWriteRunner: Runnable? = null, var bleWriteScheduled: Boolean = false,
+        var bleWriteLastAt: Long = 0L,
         var phase: Float = 0f, var lastTick: Long = 0L,
         var level: Float = .76f, var targetLevel: Float = .76f, var hueShift: Float = 0f,
         var targetHue: Float = 0f, var saturation: Float = .94f, var targetSaturation: Float = .94f,
@@ -1878,9 +1881,59 @@ class MainActivity : Activity() {
     }
 
     private fun sendPowerCommand(session: DeviceSession,on:Boolean) {
-        val packet=if(on) byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
+        val packet = if (session.isMelk) {
+            if (on) byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
             else byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return,session.characteristic ?: return,packet)
+        } else {
+            if (on) byteArrayOf(0x7E,0x04,0x04,0x01,0x00,0x01,0xFF.toByte(),0x00,0xEF.toByte())
+            else byteArrayOf(0x7E,0x04,0x04,0x00,0x00,0x00,0xFF.toByte(),0x00,0xEF.toByte())
+        }
+        if (session.isMelk) writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        else enqueueBlePacket(session, packet)
+    }
+
+    // BLE writes are serialized and paced. These controllers silently discard
+    // overlapping write-without-response frames, so effect startup and RGB
+    // animation packets must share one per-device queue.
+    private fun enqueueBlePacket(session: DeviceSession, packet: ByteArray) {
+        if (session.isMelk || !session.connected || session.gatt == null || session.characteristic == null) return
+        session.bleWriteQueue.addLast(packet.copyOf())
+        if (session.bleWriteScheduled) return
+        val runner = session.bleWriteRunner ?: object : Runnable {
+            override fun run() {
+                if (!session.connected || session.gatt == null || session.characteristic == null) {
+                    session.bleWriteQueue.clear()
+                    session.bleWriteScheduled = false
+                    return
+                }
+                val now = SystemClock.uptimeMillis()
+                val wait = (50L - (now - session.bleWriteLastAt)).coerceAtLeast(0L)
+                if (wait > 0L) {
+                    handler.postDelayed(this, wait)
+                    return
+                }
+                val next = session.bleWriteQueue.pollFirst()
+                if (next == null) {
+                    session.bleWriteScheduled = false
+                    return
+                }
+                writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, next)
+                session.bleWriteLastAt = SystemClock.uptimeMillis()
+                if (session.bleWriteQueue.isNotEmpty()) {
+                    handler.postDelayed(this, 50L)
+                } else {
+                    session.bleWriteScheduled = false
+                }
+            }
+        }.also { session.bleWriteRunner = it }
+        session.bleWriteScheduled = true
+        handler.post(runner)
+    }
+
+    private fun clearBleWriteQueue(session: DeviceSession) {
+        session.bleWriteRunner?.let { handler.removeCallbacks(it) }
+        session.bleWriteQueue.clear()
+        session.bleWriteScheduled = false
     }
 
     private fun sendBleMode(session: DeviceSession, modeIndex: Int) {
@@ -1888,21 +1941,21 @@ class MainActivity : Activity() {
         val opcode = (0x80 + modeIndex.coerceIn(0, 28)).toByte()
         val packet = byteArrayOf(0x7E, 0x05, 0x03, opcode, 0x03, 0xFF.toByte(),
             0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        enqueueBlePacket(session, packet)
     }
 
     private fun sendBleModeSpeed(session: DeviceSession, value: Int) {
         if (session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x02, value.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        enqueueBlePacket(session, packet)
     }
 
     private fun sendBleBrightness(session: DeviceSession, value: Int) {
         if (session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x01, value.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        enqueueBlePacket(session, packet)
     }
 
     private fun bleColorIndex(name: String): Int = when {
@@ -1927,7 +1980,7 @@ class MainActivity : Activity() {
         else -> Color.BLACK
     }
 
-    private fun mapBleCatalogEffect(id: Int, name: String): BleCatalogSpec {
+    private fun mapBleCatalogEffect(name: String): BleCatalogSpec {
         val red = Color.rgb(255, 0, 0)
         val green = Color.rgb(0, 255, 0)
         val blue = Color.rgb(0, 0, 255)
@@ -1935,23 +1988,22 @@ class MainActivity : Activity() {
         val cyan = Color.rgb(0, 255, 255)
         val purple = Color.rgb(160, 0, 255)
         val white = Color.WHITE
-        val black = Color.BLACK
+        val rainbow = intArrayOf(red, yellow, green, cyan, blue, purple, white)
         val rgb = intArrayOf(red, green, blue)
         val ycp = intArrayOf(yellow, cyan, purple)
-        val rainbow = intArrayOf(red, yellow, green, cyan, blue, purple, white)
         val sixColor = intArrayOf(red, yellow, green, cyan, blue, purple)
 
         val palette = when {
             name.contains("-Dot in") -> {
-                val dotName = name.substringBefore("-Dot")
-                val backgroundName = name.substringAfter(" in ")
-                    .substringBefore(" Running").substringBefore(" Run Back")
-                intArrayOf(bleColor(backgroundName), bleColor(dotName))
+                val dot = bleColor(name.substringBefore("-Dot"))
+                val background = bleColor(name.substringAfter(" in ")
+                    .substringBefore(" Running").substringBefore(" Run Back"))
+                intArrayOf(background, dot)
             }
             name.contains("7-Color in") -> {
-                val backgroundName = name.substringAfter(" in ")
-                    .substringBefore(" Running").substringBefore(" Run Back")
-                intArrayOf(bleColor(backgroundName)) + rainbow
+                val background = bleColor(name.substringAfter(" in ")
+                    .substringBefore(" Running").substringBefore(" Run Back"))
+                intArrayOf(background) + rainbow
             }
             name.contains("B-P-C-Y") -> intArrayOf(blue, purple, cyan, yellow)
             name.contains("B-G-C-Y") -> intArrayOf(blue, green, cyan, yellow)
@@ -1974,6 +2026,11 @@ class MainActivity : Activity() {
             name.contains("Y-B Water") -> intArrayOf(yellow, blue)
             name.contains("Y-C Water") -> intArrayOf(yellow, cyan)
             name.contains("C-P Water") -> intArrayOf(cyan, purple)
+            name.contains("R-Y") -> intArrayOf(red, yellow)
+            name.contains("R-P") -> intArrayOf(red, purple)
+            name.contains("G-C") -> intArrayOf(green, cyan)
+            name.contains("G-Y") -> intArrayOf(green, yellow)
+            name.contains("B-P") -> intArrayOf(blue, purple)
             name.contains("6-Color to") -> sixColor + bleColor(name.substringAfter(" to "))
             name.contains("7-Color") -> rainbow
             bleColorIndex(name) >= 0 -> intArrayOf(bleColor(name))
@@ -1981,68 +2038,56 @@ class MainActivity : Activity() {
         }
 
         val style = when {
+            name.contains("Strobe") || name.contains("Marquee") -> BleCatalogStyle.STROBE
             name.contains("-Dot in") || name.contains("7-Color in") -> BleCatalogStyle.ALTERNATE
-            name.contains("Strobe") || name.contains("Marquee") ||
-                (name.contains("Run Back") && bleColorIndex(name) >= 0) -> BleCatalogStyle.STROBE
-            name.contains("Running") || name.contains("Run Back") || name.contains("Race") ||
-                name.contains("Jump") || name.contains("Flush") || name.contains("Energy") ||
-                name.contains("Magic Forward") || name.contains("Magic Back") -> BleCatalogStyle.JUMP
+            name.contains("Tail") -> BleCatalogStyle.TAIL
+            name.contains("Close") || name.contains("Open") -> BleCatalogStyle.CURTAIN
+            name.contains("Running") || name.contains("Run Back") || name.contains("Race") -> BleCatalogStyle.RUN
+            name.contains("Flush") -> BleCatalogStyle.FLUSH
+            name.contains("Jump") || name.contains("Magic") || name.contains("Auto Play") -> BleCatalogStyle.JUMP
+            name.contains("Energy") -> BleCatalogStyle.ENERGY
             else -> BleCatalogStyle.FADE
         }
 
         val reverse = name.contains("Back") || name.contains("Open")
         val finalPalette = if (reverse) palette.reversedArray() else palette
-        val usablePalette = if (style == BleCatalogStyle.FADE && finalPalette.size == 1)
-            intArrayOf(black, finalPalette[0]) else finalPalette
 
+        // Only choose firmware modes where their colour sequence is a close
+        // semantic match. Spatial MELK effects remain software analogues because
+        // an ordinary RGB strip cannot move an individual pixel or segment.
         val colorIndex = bleColorIndex(name)
-        val hardwareMode = if (reverse || name.contains("-Dot in") || name.contains("7-Color in") ||
-            name.contains("Flow") || name.contains("Y-C-P") || name.contains("B-P-C-Y") ||
-            name.contains("B-G-C-Y")) {
-            -1
-        } else when (id) {
-            0 -> 10
-            1 -> 8
-            3 -> 10
-            5 -> 9
-            in 9..22 -> if (colorIndex >= 0) 11 + colorIndex else -1
-            23 -> 10
-            in 25..38 -> if (colorIndex >= 0) 11 + colorIndex else -1
-            39 -> 10
-            41 -> 9
-            45 -> 18
-            47 -> 20
-            55 -> 17
-            57 -> 10
-            59 -> 9
-            in 63..76 -> if (colorIndex >= 0) 11 + colorIndex else -1
-            77 -> 8
-            79 -> 7
-            83 -> 10
-            85 -> 9
-            in 89..102 -> if (colorIndex >= 0) 22 + colorIndex else -1
-            103 -> 8
-            105 -> 7
-            181 -> 8
-            183 -> 7
-            187 -> 10
-            189 -> 9
-            193 -> 8
-            194 -> 7
-            196 -> 21
-            199 -> 10
-            in 205..211 -> if (colorIndex >= 0) 22 + colorIndex else -1
-            212 -> 8
+        val hardwareMode = when {
+            name.contains("7-Color Strobe") -> 21
+            name.contains("Strobe") && colorIndex >= 0 -> 22 + colorIndex
+            name.contains("Marquee") && colorIndex >= 0 -> 22 + colorIndex
+            name == "7-Color Trans" -> 10
+            name == "R-G-B Trans" -> 9
+            name == "7-Color Wave" || name == "7-Color Water" -> 10
+            name == "R-G-B Wave" -> 9
+            name == "R-G Water" -> 18
+            name == "G-B Water" -> 20
+            name == "7-Color Jump" || name == "7-Color Race" -> 8
+            name == "R-G-B Jump" || name == "R-G-B Race" -> 7
+            name == "7-Color Gradual" -> 10
+            name.contains("Gradual") && colorIndex >= 0 -> 11 + colorIndex
             else -> -1
         }
-        return BleCatalogSpec(hardwareMode, usablePalette, style)
+        val resolvedHardwareMode = if (reverse) -1 else hardwareMode
+        return BleCatalogSpec(resolvedHardwareMode, finalPalette, style)
     }
 
     private fun startBleCatalogEffect(session: DeviceSession, effectId: Int, effectName: String, speed: Int) {
         stopActiveEffect(session)
         session.mode = EffectMode.CATALOG
         session.catalogEffectId = effectId
-        val spec = mapBleCatalogEffect(effectId, effectName)
+        // Drop stale BLE animation frames before the newly selected mode starts.
+        if (!session.isMelk) {
+            session.pending = null
+            session.flushQueued = false
+            session.flushRunner?.let { handler.removeCallbacks(it) }
+            clearBleWriteQueue(session)
+        }
+        val spec = mapBleCatalogEffect(effectName)
         session.catalogHardwareMode = spec.hardwareMode
         session.catalogPalette = spec.palette
         session.catalogStyle = spec.style
@@ -2056,22 +2101,20 @@ class MainActivity : Activity() {
             if (!session.connected || !session.stripOn || session.mode != EffectMode.CATALOG ||
                 session.catalogEffectId != effectId) return@postDelayed
             if (session.catalogHardwareMode >= 0) {
+                // Lotus Lantern applies speed to the next mode, so queue in the
+                // documented order: brightness, speed, then animation opcode.
                 sendBleBrightness(session, session.brightness)
+                sendBleModeSpeed(session, session.catalogSpeed)
                 sendBleMode(session, session.catalogHardwareMode)
-                handler.postDelayed({
-                    if (session.connected && session.stripOn && session.mode == EffectMode.CATALOG &&
-                        session.catalogEffectId == effectId)
-                        sendBleModeSpeed(session, session.catalogSpeed)
-                }, 80L)
             } else {
                 startBleCatalogSoftware(session)
             }
-        }, 120L)
+        }, 160L)
     }
 
     private fun startBleCatalogSoftware(session: DeviceSession) {
         var paletteIndex = 0
-        var phase = 0
+        var frame = 0
         var fadeStep = 0
         val runner = object : Runnable {
             override fun run() {
@@ -2081,40 +2124,75 @@ class MainActivity : Activity() {
                 if (colors.isEmpty()) return
                 val current = colors[paletteIndex % colors.size]
                 val next = colors[(paletteIndex + 1) % colors.size]
+                val speed = session.catalogSpeed.coerceIn(0, 100)
                 val output = when (session.catalogStyle) {
                     BleCatalogStyle.JUMP -> {
                         paletteIndex++
                         current
                     }
                     BleCatalogStyle.FADE -> {
-                        val t = fadeStep / 8f
+                        val t = fadeStep / 10f
+                        val eased = (1f - kotlin.math.cos(t * Math.PI.toFloat())) * .5f
                         val color = Color.rgb(
-                            (Color.red(current) + (Color.red(next) - Color.red(current)) * t).toInt().coerceIn(0, 255),
-                            (Color.green(current) + (Color.green(next) - Color.green(current)) * t).toInt().coerceIn(0, 255),
-                            (Color.blue(current) + (Color.blue(next) - Color.blue(current)) * t).toInt().coerceIn(0, 255)
+                            (Color.red(current) + (Color.red(next) - Color.red(current)) * eased).toInt().coerceIn(0, 255),
+                            (Color.green(current) + (Color.green(next) - Color.green(current)) * eased).toInt().coerceIn(0, 255),
+                            (Color.blue(current) + (Color.blue(next) - Color.blue(current)) * eased).toInt().coerceIn(0, 255)
                         )
                         fadeStep++
-                        if (fadeStep > 8) { fadeStep = 0; paletteIndex++ }
+                        if (fadeStep > 10) { fadeStep = 0; paletteIndex++ }
                         color
                     }
                     BleCatalogStyle.STROBE -> {
-                        val color = if (phase % 2 == 0) current else Color.BLACK
-                        phase++
-                        if (phase % 2 == 0) paletteIndex++
+                        val color = if (frame % 2 == 0) current else Color.BLACK
+                        frame++
+                        if (frame % 2 == 0) paletteIndex++
                         color
                     }
                     BleCatalogStyle.ALTERNATE -> {
                         val alternateCount = (colors.size - 1).coerceAtLeast(1)
                         val alternate = colors[1 + (paletteIndex % alternateCount)]
-                        val color = if (phase % 2 == 0) colors[0] else alternate
-                        phase++
-                        if (phase % 2 == 0) paletteIndex++
+                        val color = if (frame % 2 == 0) colors[0] else alternate
+                        frame++
+                        if (frame % 2 == 0) paletteIndex++
                         color
+                    }
+                    BleCatalogStyle.TAIL -> {
+                        val t = (frame % 16) / 15f
+                        val level = if (t < .5f) t * 2f else (1f - t) * 2f
+                        frame++
+                        if (frame % 16 == 0) paletteIndex++
+                        val k = level.coerceIn(.06f, 1f)
+                        Color.rgb((Color.red(current) * k).toInt(), (Color.green(current) * k).toInt(), (Color.blue(current) * k).toInt())
+                    }
+                    BleCatalogStyle.CURTAIN -> {
+                        val step = frame % 8
+                        val levels = floatArrayOf(.06f, .16f, .34f, .62f, 1f, .62f, .34f, .16f)
+                        frame++
+                        if (frame % 8 == 0) paletteIndex++
+                        val k = levels[step]
+                        Color.rgb((Color.red(current) * k).toInt(), (Color.green(current) * k).toInt(), (Color.blue(current) * k).toInt())
+                    }
+                    BleCatalogStyle.RUN -> {
+                        val color = if (frame % 4 == 3) Color.BLACK else current
+                        frame++
+                        if (frame % 4 == 0) paletteIndex++
+                        color
+                    }
+                    BleCatalogStyle.FLUSH -> {
+                        val color = if (frame % 3 == 2) Color.BLACK else current
+                        frame++
+                        if (frame % 3 == 0) paletteIndex++
+                        color
+                    }
+                    BleCatalogStyle.ENERGY -> {
+                        val pulse = floatArrayOf(.22f, .38f, .72f, 1f, .58f, .28f)[frame % 6]
+                        frame++
+                        if (frame % 6 == 0) paletteIndex++
+                        Color.rgb((Color.red(current) * pulse).toInt(), (Color.green(current) * pulse).toInt(), (Color.blue(current) * pulse).toInt())
                     }
                 }
                 sendRGBTo(session, Color.red(output), Color.green(output), Color.blue(output))
-                val delay = (220f - session.catalogSpeed.coerceIn(0, 100) * 1.2f)
-                    .toLong().coerceIn(100L, 220L)
+                val delay = (230f - speed * 1.65f).toLong().coerceIn(65L, 230L)
                 handler.postDelayed(this, delay)
             }
         }
@@ -2205,7 +2283,8 @@ class MainActivity : Activity() {
         d.flushQueued=false
         val packet=d.pending ?: return;d.pending=null
         val g=d.gatt ?: return;val ch=d.characteristic ?: return
-        writeBlePacketTo(g,ch,packet);d.lastWrite=SystemClock.uptimeMillis()
+        if (d.isMelk) writeBlePacketTo(g,ch,packet) else enqueueBlePacket(d,packet)
+        d.lastWrite=SystemClock.uptimeMillis()
         if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else 35L)}
     }
 
