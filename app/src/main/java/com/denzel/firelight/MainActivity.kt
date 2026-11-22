@@ -22,13 +22,23 @@ import java.util.UUID
 class MainActivity : Activity() {
 
     private val serviceUUID =
-        UUID.fromString("0000FFF0-0000-1000-8000-00805F9B34FB")
+        UUID.fromString("7b7a0001-6d2a-4f9b-9c4e-3d4b2a110001")
     private val writeUUID =
-        UUID.fromString("0000FFF3-0000-1000-8000-00805F9B34FB")
+        UUID.fromString("7b7a0002-6d2a-4f9b-9c4e-3d4b2a110001")
+    private val statusUUID =
+        UUID.fromString("7b7a0003-6d2a-4f9b-9c4e-3d4b2a110001")
 
     private val handler = Handler(Looper.getMainLooper())
 
     private var scanner: BluetoothLeScanner? = null
+    // One physical GATT connection to the Arduino; the two strip sessions below
+    // remain logical targets routed through its RX characteristic.
+    private var bridgeGatt: BluetoothGatt? = null
+    private var bridgeRxCharacteristic: BluetoothGattCharacteristic? = null
+    private var bridgeStatusCharacteristic: BluetoothGattCharacteristic? = null
+    private val bridgeWriteQueue = java.util.ArrayDeque<ByteArray>()
+    private var bridgeWriteInFlight = false
+    private var bridgeWriteRunner: Runnable? = null
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
     private enum class BleCatalogStyle { JUMP, FADE, STROBE, ALTERNATE, TAIL, CURTAIN, RUN, FLUSH, ENERGY }
@@ -122,7 +132,7 @@ class MainActivity : Activity() {
     private val targetAddress = "BE:27:8A:00:73:DE"
     private val melkAddress = "BE:28:96:00:42:2C"
     private var isMelkDevice = false
-    private val powerNotifyUUID = UUID.fromString("0000FFF4-0000-1000-8000-00805F9B34FB")
+    private val powerNotifyUUID = UUID.fromString("7b7a0003-6d2a-4f9b-9c4e-3d4b2a110001")
     private val cccdUUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
     private val scanTimeout = Runnable {
         if (scanning) {
@@ -1367,7 +1377,7 @@ class MainActivity : Activity() {
             }
             discoveredDevices.values.sortedBy { it.name.lowercase() }.forEach { found ->
                 val address = found.device.address.uppercase()
-                val added = managedDeviceAddresses.contains(address)
+                val added = bridgeGatt != null
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
                     setPadding(dp(10), dp(8), dp(8), dp(8))
@@ -1392,23 +1402,11 @@ class MainActivity : Activity() {
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(8), dp(8), dp(8), dp(8))
                     setOnClickListener {
-                        if (managedDeviceAddresses.contains(address)) {
-                            managedDeviceAddresses.remove(address)
-                            selectedDeviceAddresses.remove(address)
-                            if (selectedDeviceAddress.equals(address, true)) {
-                                selectedDeviceAddress = selectedDeviceAddresses.firstOrNull() ?: managedDeviceAddresses.firstOrNull().orEmpty()
-                            }
-                            sessions.remove(address)?.let { session ->
-                                stopActiveEffect(session)
-                                try { session.gatt?.disconnect(); session.gatt?.close() } catch (_: Exception) {}
-                            }
-                            activateSelectedSession()
+                        if (bridgeGatt != null) {
+                            disconnect()
                         } else {
-                            managedDeviceAddresses.add(address)
-                            saveManagedDevices()
                             connect(found.device)
                         }
-                        saveManagedDevices()
                         refreshDevicePicker()
                         refreshRows()
                     }
@@ -1599,11 +1597,8 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Увімкни Bluetooth", Toast.LENGTH_SHORT).show()
             return
         }
-        val missingAddresses = managedDeviceAddresses.filter { address ->
-            sessions[address.uppercase()]?.gatt == null
-        }
-        if (!discoverAll && missingAddresses.isEmpty()) {
-            status.text = "Усі додані пристрої вже підключені"
+        if (!discoverAll && bridgeGatt != null) {
+            status.text = "Firelight Bridge уже підключений"
             return
         }
         stopScan()
@@ -1617,9 +1612,10 @@ class MainActivity : Activity() {
         status.text = if (discoverAll) "Шукаю BLE-пристрої поблизу..." else "Шукаю додані пристрої..."
         scanning = true
         try {
-            val filters = if (discoverAll) emptyList() else missingAddresses.map { address ->
-                ScanFilter.Builder().setDeviceAddress(address).build()
-            }
+            // The bridge advertises its service UUID. Never scan for the strip MACs.
+            val filters = listOf(ScanFilter.Builder().setServiceUuid(
+                android.os.ParcelUuid(serviceUUID)
+            ).build())
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
@@ -1640,17 +1636,13 @@ class MainActivity : Activity() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = try { result.device.address.uppercase() } catch (_: SecurityException) { "" }
             if (address.isBlank()) return
-            val isManaged = managedDeviceAddresses.contains(address)
-            if (!discoverAllScanning && !isManaged) return
-            val foundName = try {
-                result.scanRecord?.deviceName?.takeIf { it.isNotBlank() } ?: result.device.name?.takeIf { it.isNotBlank() }
-            } catch (_: SecurityException) { null } ?: if (address == targetAddress.uppercase()) deviceNames[0]
-                else if (address == melkAddress.uppercase()) deviceNames[1] else "BLE-пристрій"
+            val advertisesBridge = result.scanRecord?.serviceUuids?.any { it.uuid == serviceUUID } == true
+            if (!advertisesBridge) return
             runOnUiThread {
-                discoveredDevices[address] = DiscoveredBle(result.device, foundName, result.rssi)
+                discoveredDevices[address] = DiscoveredBle(result.device, "Firelight Bridge", result.rssi)
                 refreshDiscoveryDialog?.invoke()
-                if (isManaged && sessions[address]?.gatt == null) {
-                    status.text = "Знайшов ${deviceDisplayName(address)} · підключаю..."
+                if (!discoverAllScanning && bridgeGatt == null) {
+                    status.text = "Знайшов Firelight Bridge · підключаю..."
                     connect(result.device)
                 }
             }
@@ -1721,153 +1713,161 @@ class MainActivity : Activity() {
     }
 
     private fun connect(device: BluetoothDevice) {
-        val address = try { device.address.uppercase() } catch (_: SecurityException) { return }
-        val isMelk = address == melkAddress.uppercase()
-        val session = sessions.getOrPut(address) { DeviceSession(address, isMelk) }
-        if (session.gatt != null) return
-        if (address == selectedDeviceAddress.uppercase()) {
-            status.text = "Підключення..."
-            connected = false
+        if (bridgeGatt != null) return
+        val rgb = sessions.getOrPut(targetAddress.uppercase()) {
+            DeviceSession(targetAddress.uppercase(), false)
         }
+        val melk = sessions.getOrPut(melkAddress.uppercase()) {
+            DeviceSession(melkAddress.uppercase(), true)
+        }
+        status.text = "Підключення до Firelight Bridge…"
         try {
-            session.gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            bridgeGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            if (bridgeGatt == null) status.text = "Не вдалося відкрити BLE-з'єднання з мостом"
             refreshDevicePicker()
         } catch (_: SecurityException) {
-            if (address == selectedDeviceAddress.uppercase()) status.text = "Помилка дозволу Bluetooth"
+            status.text = "Помилка дозволу Bluetooth"
+            bridgeGatt = null
         }
     }
 
-    private fun sessionFor(g: BluetoothGatt): DeviceSession? =
-        sessions.values.firstOrNull { it.gatt === g }
-
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, statusCode: Int, newState: Int) {
-            val session = sessionFor(g) ?: return
+            if (g !== bridgeGatt) return
             if (newState == BluetoothProfile.STATE_CONNECTED && statusCode == BluetoothGatt.GATT_SUCCESS) {
-                session.connected = true
-                session.stripStateKnown = false
-                session.stripOn = false
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
-                runOnUiThread {
-                    selectedDeviceAddresses.add(session.address)
-                    if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = session.address
-                    activateSelectedSession()
-                }
+                runOnUiThread { status.text = "Firelight Bridge підключено · шукаю сервіси…" }
                 try { g.discoverServices() } catch (_: SecurityException) {}
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                session.connected = false
-                selectedDeviceAddresses.remove(session.address)
-                if (selectedDeviceAddress.equals(session.address, true)) {
-                    selectedDeviceAddress = ""
+                bridgeWriteQueue.clear()
+                bridgeWriteInFlight = false
+                bridgeRxCharacteristic = null
+                bridgeStatusCharacteristic = null
+                sessions.values.forEach { session ->
+                    session.connected = false
+                    session.gatt = null
+                    session.characteristic = null
+                    session.notifyCharacteristic = null
+                    session.stripStateKnown = false
+                    session.stripOn = false
+                    stopActiveEffect(session)
                 }
-                session.characteristic = null
-                session.notifyCharacteristic = null
-                session.stripStateKnown = false
-                session.stripOn = false
-                stopActiveEffect(session)
                 try { g.close() } catch (_: Exception) {}
-                session.gatt = null
+                bridgeGatt = null
                 runOnUiThread {
+                    selectedDeviceAddresses.clear()
+                    selectedDeviceAddress = ""
+                    gatt = null
+                    characteristic = null
+                    connected = false
                     activateSelectedSession()
                     refreshDevicePicker()
+                    status.text = "Firelight Bridge від'єднався"
                 }
             }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, statusCode: Int) {
-            val session = sessionFor(g) ?: return
+            if (g !== bridgeGatt) return
             val service = g.getService(serviceUUID)
-            val writeChar = service?.getCharacteristic(writeUUID)
-            val powerState = service?.getCharacteristic(powerNotifyUUID)
-            session.characteristic = writeChar
-            session.notifyCharacteristic = powerState
+            val rx = service?.getCharacteristic(writeUUID)
+            val bridgeStatus = service?.getCharacteristic(statusUUID)
+            if (statusCode != BluetoothGatt.GATT_SUCCESS || rx == null) {
+                runOnUiThread { status.text = "Не знайдено сервіс Firelight Bridge або RX" }
+                return
+            }
+            bridgeRxCharacteristic = rx
+            bridgeStatusCharacteristic = bridgeStatus
+            sessions.values.forEach { session ->
+                session.gatt = g
+                session.characteristic = rx
+                session.notifyCharacteristic = bridgeStatus
+                session.connected = true
+                session.stripStateKnown = false
+                session.stripOn = false
+            }
             runOnUiThread {
-                if (statusCode == BluetoothGatt.GATT_SUCCESS && writeChar != null) {
-                    activateSelectedSession()
-                    val canNotify = powerState != null &&
-                        (powerState.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
-                            BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
-                    val canRead = powerState != null &&
-                        (powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0
-                    if (canNotify) {
-                        try {
-                            g.setCharacteristicNotification(powerState, true)
-                            val descriptor = powerState.getDescriptor(cccdUUID)
-                            if (descriptor != null) {
-                                if (Build.VERSION.SDK_INT >= 33) {
-                                    val value = if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
-                                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                    else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                                    g.writeDescriptor(descriptor, value)
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    descriptor.value = if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
-                                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                    else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-                                    @Suppress("DEPRECATION")
-                                    g.writeDescriptor(descriptor)
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
-                    if (session.isMelk) {
-                        if (session.address == selectedDeviceAddress.uppercase())
-                            status.text = "MELK знайдено · ініціалізую контролер…"
-                        writeBlePacketTo(g, writeChar, byteArrayOf(0x7E, 0x07, 0x83.toByte()))
-                        handler.postDelayed({
-                            if (session.gatt === g && session.connected) {
-                                writeBlePacketTo(g, writeChar, byteArrayOf(0x7E, 0x04, 0x04))
-                                if (session.address == selectedDeviceAddress.uppercase())
-                                    status.text = "MELK-OA21 2C підключено · стан не передається"
-                            }
-                        }, 140L)
-                    } else {
-                        if (canRead && !canNotify) {
-                            try { g.readCharacteristic(powerState) } catch (_: Exception) {}
-                        }
-                        if (session.address == selectedDeviceAddress.uppercase()) {
-                            status.text = if (canNotify || canRead)
-                                "Підключено · перевіряю стан стрічки…"
-                            else "Підключено · контролер не повідомляє стан"
-                            handler.removeCallbacks(powerStateTimeout)
-                            handler.postDelayed(powerStateTimeout, 1800L)
+                selectedDeviceAddresses.clear()
+                selectedDeviceAddresses.add(targetAddress.uppercase())
+                selectedDeviceAddresses.add(melkAddress.uppercase())
+                if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = targetAddress.uppercase()
+                activateSelectedSession()
+                status.text = "Firelight Bridge підключено · RGB + MELK готові"
+                refreshDevicePicker()
+            }
+
+            val canNotify = bridgeStatus != null &&
+                (bridgeStatus.properties and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or
+                    BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
+            if (canNotify) {
+                try {
+                    g.setCharacteristicNotification(bridgeStatus, true)
+                    val descriptor = bridgeStatus.getDescriptor(cccdUUID)
+                    if (descriptor != null) {
+                        val value = if ((bridgeStatus.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0)
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        else BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            g.writeDescriptor(descriptor, value)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            descriptor.value = value
+                            @Suppress("DEPRECATION")
+                            g.writeDescriptor(descriptor)
                         }
                     }
-                    refreshDevicePicker()
-                } else if (session.address == selectedDeviceAddress.uppercase()) {
-                    status.text = "Не знайдено FFF0 / FFF3"
+                } catch (_: Exception) {}
+            }
+
+            // Preserve MELK's two original initialization packets, target 0x01.
+            writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x07, 0x83.toByte()), true)
+            handler.postDelayed({
+                if (bridgeGatt === g && melk.connected) {
+                    writeBlePacketTo(g, rx, byteArrayOf(0x7E, 0x04, 0x04), true)
                 }
+            }, 140L)
+        }
+
+        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            if (g !== bridgeGatt || characteristic.uuid != statusUUID) return
+            handleBridgeStatus(characteristic.value)
+        }
+
+        override fun onCharacteristicChanged(
+            g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray
+        ) {
+            if (g !== bridgeGatt || characteristic.uuid != statusUUID) return
+            handleBridgeStatus(value)
+        }
+
+        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            if (g !== bridgeGatt || descriptor.uuid != cccdUUID) return
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                runOnUiThread { this@MainActivity.status.text = "Firelight Bridge підключено · статус активний" }
             }
         }
 
-        @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
-        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            val session = sessionFor(g) ?: return
-            if (characteristic.uuid == powerNotifyUUID)
-                updatePowerStateFromPacket(session, characteristic.value)
+        override fun onCharacteristicWrite(
+            g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
+        ) {
+            if (g !== bridgeGatt || characteristic.uuid != writeUUID) return
+            bridgeWriteInFlight = false
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                runOnUiThread { this@MainActivity.status.text = "Міст не прийняв BLE-команду (код $status)" }
+            }
+            handler.postDelayed({ drainBridgeWriteQueue() }, 12L)
         }
-        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-            val session = sessionFor(g) ?: return
-            if (characteristic.uuid == powerNotifyUUID)
-                updatePowerStateFromPacket(session, value)
-        }
-        @Deprecated("Deprecated in Android 13; kept for older BLE callbacks")
-        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            val session = sessionFor(g) ?: return
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID)
-                updatePowerStateFromPacket(session, characteristic.value)
-        }
-        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
-            val session = sessionFor(g) ?: return
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == powerNotifyUUID)
-                updatePowerStateFromPacket(session, value)
-        }
-        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            val session = sessionFor(g) ?: return
-            if (status != BluetoothGatt.GATT_SUCCESS || descriptor.uuid != cccdUUID) return
-            val powerState = session.notifyCharacteristic ?: return
-            if ((powerState.properties and BluetoothGattCharacteristic.PROPERTY_READ) != 0) {
-                try { g.readCharacteristic(powerState) } catch (_: Exception) {}
+    }
+
+    private fun handleBridgeStatus(value: ByteArray?) {
+        if (value == null || value.isEmpty()) return
+        val message = String(value, Charsets.UTF_8).trim()
+        if (message.isEmpty()) return
+        if (message.startsWith("ERR:") || message.endsWith(":FAIL")) {
+            runOnUiThread { status.text = "Firelight Bridge · $message" }
+        } else if (message.endsWith(":OK")) {
+            runOnUiThread {
+                status.text = "Firelight Bridge · команду передано (${message.removePrefix("TX:").removeSuffix(":OK")})"
             }
         }
     }
@@ -1888,8 +1888,7 @@ class MainActivity : Activity() {
             if (on) byteArrayOf(0x7E,0x04,0x04,0x01,0x00,0x01,0xFF.toByte(),0x00,0xEF.toByte())
             else byteArrayOf(0x7E,0x04,0x04,0x00,0x00,0x00,0xFF.toByte(),0x00,0xEF.toByte())
         }
-        if (session.isMelk) writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
-        else enqueueBlePacket(session, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.isMelk)
     }
 
     // BLE writes are serialized and paced. These controllers silently discard
@@ -1917,7 +1916,7 @@ class MainActivity : Activity() {
                     session.bleWriteScheduled = false
                     return
                 }
-                writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, next)
+                writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, next, false)
                 session.bleWriteLastAt = SystemClock.uptimeMillis()
                 if (session.bleWriteQueue.isNotEmpty()) {
                     handler.postDelayed(this, 50L)
@@ -2203,14 +2202,14 @@ class MainActivity : Activity() {
     private fun sendMelkMode(session: DeviceSession, mode: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x05, 0x03, mode.toByte(), 0x06, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
     }
 
     private fun sendMelkModeSpeed(session: DeviceSession, value: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x02, value.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
     }
 
     private fun sendMelkBrightness(session: DeviceSession, value: Int) {
@@ -2232,7 +2231,7 @@ class MainActivity : Activity() {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x07, if (enabled) 0x01 else 0x00,
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
         session.micEnabled = enabled
     }
 
@@ -2241,7 +2240,7 @@ class MainActivity : Activity() {
         val encoded = (0x80 + (effect.coerceIn(1, 8) - 1)).toByte()
         val packet = byteArrayOf(0x7E, 0x05, 0x03, encoded, 0x04,
             0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
         session.micEffect = effect.coerceIn(1, 8)
     }
 
@@ -2249,7 +2248,7 @@ class MainActivity : Activity() {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x06, sensitivity.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
         session.micSensitivity = sensitivity.coerceIn(0, 100)
     }
 
@@ -2284,7 +2283,7 @@ class MainActivity : Activity() {
         d.flushQueued=false
         val packet=d.pending ?: return;d.pending=null
         val g=d.gatt ?: return;val ch=d.characteristic ?: return
-        if (d.isMelk) writeBlePacketTo(g,ch,packet) else enqueueBlePacket(d,packet)
+        writeBlePacketTo(g, ch, packet, d.isMelk)
         d.lastWrite=SystemClock.uptimeMillis()
         if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else 35L)}
     }
@@ -2292,32 +2291,55 @@ class MainActivity : Activity() {
     private fun sendCurrentColor() { selectedSessions().forEach{sendRGBTo(it,it.red,it.green,it.blue)} }
     private fun sendRGB(r:Int,g:Int,b:Int) { selectedSessions().forEach{sendRGBTo(it,r,g,b)} }
 
-    private fun writeBlePacketTo(g: BluetoothGatt, char: BluetoothGattCharacteristic, packet: ByteArray) {
+    // Both virtual strips share one physical GATT link. The Arduino frame is
+    // F1 + target (01=MELK, 02=RGB) + the unchanged nine-byte strip packet.
+    private fun writeBlePacketTo(
+        g: BluetoothGatt, char: BluetoothGattCharacteristic, packet: ByteArray, isMelk: Boolean
+    ) {
+        if (g !== bridgeGatt || char.uuid != writeUUID || packet.size != 9) return
+        val frame = ByteArray(11)
+        frame[0] = 0xF1.toByte()
+        frame[1] = if (isMelk) 0x01 else 0x02
+        System.arraycopy(packet, 0, frame, 2, 9)
+        bridgeWriteQueue.addLast(frame)
+        if (bridgeWriteRunner == null) bridgeWriteRunner = Runnable { drainBridgeWriteQueue() }
+        handler.removeCallbacks(bridgeWriteRunner!!)
+        handler.post(bridgeWriteRunner!!)
+    }
+
+    private fun drainBridgeWriteQueue() {
+        val activeGatt = bridgeGatt ?: return
+        val rx = bridgeRxCharacteristic ?: return
+        if (bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
+        val frame = bridgeWriteQueue.peekFirst() ?: return
         try {
-            val supportsNoResponse =
-                (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
-            val writeType = if (supportsNoResponse) {
-                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            } else {
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            }
             val result = if (Build.VERSION.SDK_INT >= 33) {
-                g.writeCharacteristic(char, packet, writeType)
+                activeGatt.writeCharacteristic(rx, frame, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
             } else {
                 @Suppress("DEPRECATION")
-                char.writeType = writeType
+                rx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                 @Suppress("DEPRECATION")
-                char.value = packet
+                rx.value = frame
                 @Suppress("DEPRECATION")
-                if (g.writeCharacteristic(char)) BluetoothGatt.GATT_SUCCESS
+                if (activeGatt.writeCharacteristic(rx)) BluetoothGatt.GATT_SUCCESS
                 else BluetoothGatt.GATT_FAILURE
             }
-            if (g === gatt) lastWriteAt = SystemClock.uptimeMillis()
-            if (result != BluetoothGatt.GATT_SUCCESS) {
-                runOnUiThread { status.text = "BLE не прийняв команду живлення (код $result)" }
+            if (result == BluetoothGatt.GATT_SUCCESS) {
+                bridgeWriteQueue.removeFirst()
+                bridgeWriteInFlight = true
+                lastWriteAt = SystemClock.uptimeMillis()
+            } else {
+                bridgeWriteQueue.removeFirst()
+                runOnUiThread { status.text = "BLE-міст не прийняв запис (код $result)" }
+                handler.postDelayed({ drainBridgeWriteQueue() }, 40L)
             }
         } catch (_: SecurityException) {
+            bridgeWriteQueue.clear()
             runOnUiThread { status.text = "Помилка дозволу на запис Bluetooth" }
+        } catch (e: Exception) {
+            bridgeWriteQueue.removeFirst()
+            runOnUiThread { status.text = "Помилка BLE-запису: ${e.message}" }
+            handler.postDelayed({ drainBridgeWriteQueue() }, 40L)
         }
     }
 
@@ -2398,6 +2420,12 @@ class MainActivity : Activity() {
             d.stripOn=false;d.stripStateKnown=false
             try{old?.disconnect();old?.close()}catch(_:Exception){}
         }
+        bridgeWriteQueue.clear(); bridgeWriteInFlight=false
+        bridgeWriteRunner?.let { handler.removeCallbacks(it) }
+        bridgeWriteRunner=null
+        val oldBridge=bridgeGatt
+        bridgeGatt=null; bridgeRxCharacteristic=null; bridgeStatusCharacteristic=null
+        try { oldBridge?.disconnect(); oldBridge?.close() } catch (_: Exception) {}
         gatt=null;connected=false;characteristic=null;notifyCharacteristic=null
     }
 
@@ -2408,8 +2436,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        // Release the BLE peripheral when the Activity is closed. Leaving a GATT
-        // client open can keep the strip connected and invisible to other scanners.
+        // Release the Arduino bridge when the Activity is closed.
         stopScan()
         handler.removeCallbacks(powerStateTimeout)
         closeGattConnection()
