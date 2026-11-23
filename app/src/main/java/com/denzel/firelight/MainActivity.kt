@@ -1885,6 +1885,25 @@ class MainActivity : Activity() {
     // animation packets must share one per-device queue.
     private fun enqueueBlePacket(session: DeviceSession, packet: ByteArray) {
         if (session.isMelk || !session.connected || session.gatt == null || session.characteristic == null) return
+
+        // Brightness slider updates are replaceable. Do not let old values
+        // accumulate in the per-device queue while the bridge is busy.
+        val isRgbBrightness = packet.size == 9 &&
+            packet[0] == 0x7E.toByte() &&
+            packet[1] == 0x04.toByte() &&
+            packet[2] == 0x01.toByte()
+        if (isRgbBrightness) {
+            val iterator = session.bleWriteQueue.iterator()
+            while (iterator.hasNext()) {
+                val queued = iterator.next()
+                if (queued.size == 9 &&
+                    queued[0] == 0x7E.toByte() &&
+                    queued[1] == 0x04.toByte() &&
+                    queued[2] == 0x01.toByte()
+                ) iterator.remove()
+            }
+        }
+
         session.bleWriteQueue.addLast(packet.copyOf())
         if (session.bleWriteScheduled) return
         val runner = session.bleWriteRunner ?: object : Runnable {
