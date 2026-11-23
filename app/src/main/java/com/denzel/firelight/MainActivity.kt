@@ -40,6 +40,8 @@ class MainActivity : Activity() {
     private var bridgeWriteInFlight = false
     private var bridgeWriteReady = false
     private var bridgeWriteRunner: Runnable? = null
+    private var bridgeClosing = false
+    private var bridgeCloseTimeout: Runnable? = null
     private var gatt: BluetoothGatt? = null
     private var characteristic: BluetoothGattCharacteristic? = null
     private enum class BleCatalogStyle { JUMP, FADE, STROBE, ALTERNATE, TAIL, CURTAIN, RUN, FLUSH, ENERGY }
@@ -1735,10 +1737,18 @@ class MainActivity : Activity() {
         override fun onConnectionStateChange(g: BluetoothGatt, statusCode: Int, newState: Int) {
             if (g !== bridgeGatt) return
             if (newState == BluetoothProfile.STATE_CONNECTED && statusCode == BluetoothGatt.GATT_SUCCESS) {
+                if (bridgeClosing) {
+                    try { g.disconnect() } catch (_: Exception) {}
+                    return
+                }
                 try { g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
                 runOnUiThread { status.text = "Firelight Bridge підключено · шукаю сервіси…" }
                 try { g.discoverServices() } catch (_: SecurityException) {}
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                val wasClosing = bridgeClosing
+                bridgeCloseTimeout?.let { handler.removeCallbacks(it) }
+                bridgeCloseTimeout = null
+                bridgeClosing = false
                 bridgeWriteQueue.clear()
                 bridgeWriteInFlight = false
                 bridgeWriteReady = false
@@ -1755,15 +1765,17 @@ class MainActivity : Activity() {
                 }
                 try { g.close() } catch (_: Exception) {}
                 bridgeGatt = null
-                runOnUiThread {
-                    selectedDeviceAddresses.clear()
-                    selectedDeviceAddress = ""
-                    gatt = null
-                    characteristic = null
-                    connected = false
-                    activateSelectedSession()
-                    refreshDevicePicker()
-                    status.text = "Firelight Bridge від'єднався"
+                if (!wasClosing && !isFinishing && !isDestroyed) {
+                    runOnUiThread {
+                        selectedDeviceAddresses.clear()
+                        selectedDeviceAddress = ""
+                        gatt = null
+                        characteristic = null
+                        connected = false
+                        activateSelectedSession()
+                        refreshDevicePicker()
+                        status.text = "Firelight Bridge від'єднався"
+                    }
                 }
             }
         }
@@ -2451,9 +2463,38 @@ class MainActivity : Activity() {
         bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false
         bridgeWriteRunner?.let { handler.removeCallbacks(it) }
         bridgeWriteRunner=null
+        bridgeRxCharacteristic=null
+        bridgeStatusCharacteristic=null
         val oldBridge=bridgeGatt
-        bridgeGatt=null; bridgeRxCharacteristic=null; bridgeStatusCharacteristic=null
-        try { oldBridge?.disconnect(); oldBridge?.close() } catch (_: Exception) {}
+        if (oldBridge != null) {
+            bridgeClosing = true
+            bridgeCloseTimeout?.let { handler.removeCallbacks(it) }
+            val fallbackClose = Runnable {
+                if (bridgeGatt === oldBridge) {
+                    bridgeGatt = null
+                    bridgeClosing = false
+                    bridgeCloseTimeout = null
+                    try { oldBridge.close() } catch (_: Exception) {}
+                }
+            }
+            bridgeCloseTimeout = fallbackClose
+            try {
+                oldBridge.disconnect()
+                // Android normally reports STATE_DISCONNECTED; this is a
+                // fallback for devices that fail to deliver the callback.
+                handler.postDelayed(fallbackClose, 1500L)
+            } catch (_: Exception) {
+                handler.removeCallbacks(fallbackClose)
+                bridgeCloseTimeout = null
+                bridgeGatt = null
+                bridgeClosing = false
+                try { oldBridge.close() } catch (_: Exception) {}
+            }
+        } else {
+            bridgeClosing = false
+            bridgeCloseTimeout?.let { handler.removeCallbacks(it) }
+            bridgeCloseTimeout = null
+        }
         gatt=null;connected=false;characteristic=null;notifyCharacteristic=null
     }
 
