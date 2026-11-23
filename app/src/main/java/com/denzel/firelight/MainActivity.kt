@@ -39,6 +39,8 @@ class MainActivity : Activity() {
     private val bridgeWriteQueue = java.util.ArrayDeque<ByteArray>()
     private var bridgeWriteInFlight = false
     private var bridgeWriteReady = false
+    // Enabled only when the bridge advertises WRITE_WITHOUT_RESPONSE.
+    private var bridgeWriteWithoutResponse = false
     private var bridgeWriteRunner: Runnable? = null
     private var bridgeClosing = false
     private var bridgeCloseTimeout: Runnable? = null
@@ -1748,6 +1750,7 @@ class MainActivity : Activity() {
                 bridgeWriteQueue.clear()
                 bridgeWriteInFlight = false
                 bridgeWriteReady = false
+                bridgeWriteWithoutResponse = false
                 bridgeRxCharacteristic = null
                 bridgeStatusCharacteristic = null
                 sessions.values.forEach { session ->
@@ -1787,6 +1790,7 @@ class MainActivity : Activity() {
             }
             bridgeRxCharacteristic = rx
             bridgeStatusCharacteristic = bridgeStatus
+            bridgeWriteWithoutResponse = (rx.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
             sessions.values.forEach { session ->
                 session.gatt = g
                 session.characteristic = rx
@@ -1862,6 +1866,8 @@ class MainActivity : Activity() {
             g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int
         ) {
             if (g !== bridgeGatt || characteristic.uuid != writeUUID) return
+            // Write Without Response is paced by the queue runner, not by this callback.
+            if (bridgeWriteWithoutResponse) return
             bridgeWriteInFlight = false
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { this@MainActivity.status.text = "Міст не прийняв BLE-команду (код $status)" }
@@ -2415,12 +2421,15 @@ class MainActivity : Activity() {
         val rx = bridgeRxCharacteristic ?: return
         if (!bridgeWriteReady || bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
         val frame = bridgeWriteQueue.peekFirst() ?: return
+        val writeType = if (bridgeWriteWithoutResponse)
+            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         try {
             val result = if (Build.VERSION.SDK_INT >= 33) {
-                activeGatt.writeCharacteristic(rx, frame, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                activeGatt.writeCharacteristic(rx, frame, writeType)
             } else {
                 @Suppress("DEPRECATION")
-                rx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                rx.writeType = writeType
                 @Suppress("DEPRECATION")
                 rx.value = frame
                 @Suppress("DEPRECATION")
@@ -2429,8 +2438,15 @@ class MainActivity : Activity() {
             }
             if (result == BluetoothGatt.GATT_SUCCESS) {
                 bridgeWriteQueue.removeFirst()
-                bridgeWriteInFlight = true
                 lastWriteAt = SystemClock.uptimeMillis()
+                if (bridgeWriteWithoutResponse) {
+                    // Do not wait for a GATT response that this write type does not provide.
+                    // A small pacing interval prevents flooding the ESP32 RX callback.
+                    bridgeWriteInFlight = false
+                    handler.postDelayed({ drainBridgeWriteQueue() }, 10L)
+                } else {
+                    bridgeWriteInFlight = true
+                }
             } else {
                 bridgeWriteQueue.removeFirst()
                 runOnUiThread { status.text = "BLE-міст не прийняв запис (код $result)" }
@@ -2523,7 +2539,7 @@ class MainActivity : Activity() {
             d.stripOn=false;d.stripStateKnown=false
             clearBleWriteQueue(d)
         }
-        bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false
+        bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false; bridgeWriteWithoutResponse=false
         bridgeWriteRunner?.let { handler.removeCallbacks(it) }
         bridgeWriteRunner=null
         bridgeRxCharacteristic=null
