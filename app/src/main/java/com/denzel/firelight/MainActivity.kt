@@ -105,7 +105,7 @@ class MainActivity : Activity() {
     private var brightness = 100
     private var speed = 15
     private var fireColorSpread = 0
-    private var stripOn = false
+    private var stripOn = true
     private var stripStateKnown = false
     private var notifyCharacteristic: BluetoothGattCharacteristic? = null
     private lateinit var bulbButton: BulbToggleView
