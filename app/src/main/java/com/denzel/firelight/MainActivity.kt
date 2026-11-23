@@ -55,7 +55,7 @@ class MainActivity : Activity() {
         val address: String, val isMelk: Boolean,
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
-        var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
+        var connected: Boolean = false, var stripOn: Boolean = true, var stripStateKnown: Boolean = true,
         var mode: EffectMode = EffectMode.NONE,
         var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
@@ -195,8 +195,8 @@ class MainActivity : Activity() {
         selectedDeviceAddresses.clear()
         selectedDeviceAddress = ""
         requestBluetoothPermissions()
-        stripStateKnown = false
-        stripOn = false
+        stripStateKnown = true
+        stripOn = true
         if (hasBluetoothPermissions()) {
             startKeepAliveService()
             startScan()
@@ -1458,7 +1458,7 @@ class MainActivity : Activity() {
             return
         }
         targets.forEach { device ->
-            stopActiveEffect(device)
+            pauseActiveEffectForPowerOff(device)
             device.stripOn = false
             device.stripStateKnown = true
             device.pending = null
@@ -1738,8 +1738,8 @@ class MainActivity : Activity() {
                 session.characteristic = rx
                 session.notifyCharacteristic = bridgeStatus
                 session.connected = true
-                session.stripStateKnown = false
-                session.stripOn = false
+                session.stripStateKnown = true
+                session.stripOn = true
             }
             runOnUiThread {
                 selectedDeviceAddresses.clear()
@@ -1835,7 +1835,7 @@ class MainActivity : Activity() {
         if(packet==null||packet.size<4||packet[0]!=0x7E.toByte()||packet[2]!=0x04.toByte())return
         val on=when(packet[3].toInt() and 255){0xF0,0xFF->true;0x00->false;else->return}
         session.stripOn=on;session.stripStateKnown=true
-        if(!on) stopActiveEffect(session)
+        if(!on) pauseActiveEffectForPowerOff(session)
         runOnUiThread { if(selectedDeviceAddresses.contains(session.address)) activateSelectedSession() }
     }
 
@@ -2549,6 +2549,51 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun pauseActiveEffectForPowerOff(d: DeviceSession) {
+        if (d.mode == EffectMode.FIRE || d.mode == EffectMode.RAINBOW) {
+            sendEffectCommand(d, d.mode, false)
+        }
+        d.fillSpeedRunner?.let { handler.removeCallbacks(it) }
+        d.catalogRunner?.let { handler.removeCallbacks(it) }
+        d.catalogRunner = null
+        // Keep mode and its parameters so the same program can be restored on power-on.
+    }
+
+    private fun resumeActiveEffectAfterPowerOn(d: DeviceSession) {
+        when (d.mode) {
+            EffectMode.MIC -> {
+                if (d.isMelk) handler.postDelayed({
+                    if (d.connected && d.stripOn && d.mode == EffectMode.MIC) {
+                        sendMelkMusicProgram(d, d.micEffect, d.micSensitivity)
+                    }
+                }, 140L)
+            }
+            EffectMode.CATALOG -> {
+                handler.postDelayed({
+                    if (!d.connected || !d.stripOn || d.mode != EffectMode.CATALOG) return@postDelayed
+                    if (d.isMelk) {
+                        if (d.catalogEffectId >= 0) {
+                            sendMelkMode(d, d.catalogEffectId)
+                            handler.postDelayed({
+                                if (d.connected && d.stripOn && d.mode == EffectMode.CATALOG) {
+                                    sendMelkModeSpeed(d, d.catalogSpeed)
+                                }
+                            }, 100L)
+                        }
+                    } else if (d.catalogHardwareMode >= 0) {
+                        sendBleBrightness(d, d.brightness)
+                        sendBleModeSpeed(d, d.catalogSpeed)
+                        sendBleMode(d, d.catalogHardwareMode)
+                    } else {
+                        startBleCatalogSoftware(d)
+                    }
+                }, 160L)
+            }
+            EffectMode.FIRE, EffectMode.RAINBOW -> sendEffectCommand(d, d.mode, true)
+            EffectMode.NONE, EffectMode.FILL -> sendRGBTo(d, d.red, d.green, d.blue)
+        }
+    }
+
     private fun stopActiveEffect(d:DeviceSession) {
         if (d.mode == EffectMode.FIRE || d.mode == EffectMode.RAINBOW) {
             sendEffectCommand(d, d.mode, false)
@@ -2571,8 +2616,22 @@ class MainActivity : Activity() {
         if(targets.isEmpty()){Toast.makeText(this,"Спочатку підключи пристрій",Toast.LENGTH_SHORT).show();return}
         val turnOff=targets.all{it.stripStateKnown&&it.stripOn}
         targets.forEach { d ->
-            if(turnOff){stopActiveEffect(d);d.stripOn=false;d.stripStateKnown=true;d.pending=null;d.flushQueued=false;d.flushRunner?.let{handler.removeCallbacks(it)};sendPowerCommand(d,false)}
-            else {d.stripOn=true;d.stripStateKnown=true;sendPowerCommand(d,true);handler.postDelayed({if(d.connected&&d.stripOn&&d.mode==EffectMode.NONE)sendRGBTo(d,d.red,d.green,d.blue)},180L)}
+            if (turnOff) {
+                pauseActiveEffectForPowerOff(d)
+                d.stripOn = false
+                d.stripStateKnown = true
+                d.pending = null
+                d.flushQueued = false
+                d.flushRunner?.let { handler.removeCallbacks(it) }
+                sendPowerCommand(d, false)
+            } else {
+                d.stripOn = true
+                d.stripStateKnown = true
+                sendPowerCommand(d, true)
+                handler.postDelayed({
+                    if (d.connected && d.stripOn) resumeActiveEffectAfterPowerOn(d)
+                }, 180L)
+            }
         }
         activateSelectedSession()
     }
