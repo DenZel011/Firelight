@@ -1554,8 +1554,7 @@ class MainActivity : Activity() {
         val permissions = if (Build.VERSION.SDK_INT >= 31) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.BLUETOOTH_CONNECT
             )
         } else {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -1577,9 +1576,6 @@ class MainActivity : Activity() {
             ) == PackageManager.PERMISSION_GRANTED &&
                 checkSelfPermission(
                     Manifest.permission.BLUETOOTH_CONNECT
-                ) == PackageManager.PERMISSION_GRANTED &&
-                checkSelfPermission(
-                    Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
         }
 
