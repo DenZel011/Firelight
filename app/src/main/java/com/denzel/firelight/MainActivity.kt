@@ -355,7 +355,7 @@ class MainActivity : Activity() {
             updatePreview()
             selectedSessions().forEach { d ->
                 d.red=red; d.green=green; d.blue=blue
-                if (d.mode == EffectMode.CATALOG) {
+                if (d.mode == EffectMode.CATALOG || d.mode == EffectMode.MIC) {
                     stopActiveEffect(d)
                     sendRGBTo(d, red, green, blue)
                 } else if (d.mode == EffectMode.FIRE) {
@@ -925,16 +925,7 @@ class MainActivity : Activity() {
                 }
                 handler.postDelayed({
                     if (d.connected && d.mode == EffectMode.MIC) {
-                        sendMelkMicEnabled(d, true)
-                        handler.postDelayed({
-                            if (d.connected && d.mode == EffectMode.MIC) {
-                                sendMelkMicEffect(d, preset.id)
-                                handler.postDelayed({
-                                    if (d.connected && d.mode == EffectMode.MIC)
-                                        sendMelkMicSensitivity(d, musicSensitivity)
-                                }, 100L)
-                            }
-                        }, 100L)
+                        sendMelkMusicProgram(d, preset.id, musicSensitivity)
                     }
                 }, 140L)
             }
@@ -1004,8 +995,8 @@ class MainActivity : Activity() {
         addGap(musicCard, 8)
         addModernSlider(musicCard, "Чутливість мікрофона", musicSensitivity, 100, "%", 2) { value ->
             musicSensitivity = value.coerceIn(0, 100)
-            selectedSessions().filter { it.isMelk && it.mode == EffectMode.MIC }.forEach { d ->
-                sendMelkMicSensitivity(d, musicSensitivity)
+            selectedSessions().filter { it.isMelk && it.connected && it.mode == EffectMode.MIC }.forEach { d ->
+                sendMelkMusicProgram(d, d.micEffect, musicSensitivity)
             }
         }
 
@@ -2235,6 +2226,21 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun sendMelkMusicProgram(session: DeviceSession, effect: Int, sensitivity: Int) {
+        if (!session.isMelk || !session.connected) return
+        val gatt = session.gatt ?: return
+        val characteristic = session.characteristic ?: return
+        val frame = byteArrayOf(
+            0xF2.toByte(), 0x01, 0x05,
+            effect.coerceIn(1, 8).toByte(),
+            sensitivity.coerceIn(0, 100).toByte()
+        )
+        enqueueBridgeFrame(gatt, characteristic, frame)
+        session.micEnabled = true
+        session.micEffect = effect.coerceIn(1, 8)
+        session.micSensitivity = sensitivity.coerceIn(0, 100)
+    }
+
     private fun sendMelkMicEnabled(session: DeviceSession, enabled: Boolean) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x07, if (enabled) 0x01 else 0x00,
@@ -2541,7 +2547,9 @@ class MainActivity : Activity() {
         d.catalogEffectId = -1
         d.catalogHardwareMode = -1
         d.catalogPalette = intArrayOf()
-        if (d.isMelk && d.micEnabled) sendMelkMicEnabled(d, false)
+        // Music is stopped by the bridge when the next program/color command arrives.
+        // Do not send a separate phone-side MELK microphone-off packet.
+        d.micEnabled = false
         d.mode=EffectMode.NONE
     }
     private fun stopActiveEffect() { selectedSessions().forEach{stopActiveEffect(it)};refreshEffectButtons() }
