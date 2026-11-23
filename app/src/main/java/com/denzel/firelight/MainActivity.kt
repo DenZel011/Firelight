@@ -1892,14 +1892,35 @@ class MainActivity : Activity() {
     }
 
     private fun sendPowerCommand(session: DeviceSession,on:Boolean) {
-        val packet = if (session.isMelk) {
-            if (on) byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
-            else byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
-        } else {
-            if (on) byteArrayOf(0x7E,0x04,0x04,0x01,0x00,0x01,0xFF.toByte(),0x00,0xEF.toByte())
-            else byteArrayOf(0x7E,0x04,0x04,0x00,0x00,0x00,0xFF.toByte(),0x00,0xEF.toByte())
+        val gatt = session.gatt ?: return
+        val characteristic = session.characteristic ?: return
+
+        if (!session.isMelk) {
+            if (!on) {
+                // Prevent already queued RGB animation/color frames from
+                // arriving after OFF and turning the strip back on.
+                clearBleWriteQueue(session)
+                session.pending = null
+                session.flushQueued = false
+                session.flushRunner?.let { handler.removeCallbacks(it) }
+            }
+            val frame = byteArrayOf(
+                0xF2.toByte(), 0x02, 0x02, 0x01,
+                if (on) 0x01 else 0x00
+            )
+            enqueueBridgeFrame(
+                gatt, characteristic, frame,
+                replaceTargetQueue = true
+            )
+            return
         }
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.isMelk)
+
+        val packet = if (on) {
+            byteArrayOf(0x7E,0x04,0x04,0xF0.toByte(),0,1,0xFF.toByte(),0,0xEF.toByte())
+        } else {
+            byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
+        }
+        writeBlePacketTo(gatt, characteristic, packet, true)
     }
 
     // BLE writes are serialized and paced. These controllers silently discard
@@ -2344,9 +2365,24 @@ class MainActivity : Activity() {
         g: BluetoothGatt,
         char: BluetoothGattCharacteristic,
         frame: ByteArray,
-        coalesceColor: Boolean = false
+        coalesceColor: Boolean = false,
+        replaceTargetQueue: Boolean = false
     ) {
         if (g !== bridgeGatt || char.uuid != writeUUID) return
+
+        if (replaceTargetQueue) {
+            // Power-state changes supersede every queued command for this
+            // target, including stale effect and color frames.
+            val target = frame[1]
+            val iterator = bridgeWriteQueue.iterator()
+            while (iterator.hasNext()) {
+                val queued = iterator.next()
+                if (queued.size >= 2 &&
+                    (queued[0] == 0xF1.toByte() || queued[0] == 0xF2.toByte()) &&
+                    queued[1] == target
+                ) iterator.remove()
+            }
+        }
 
         if (coalesceColor) {
             // Keep only the newest unsent RGB color, regardless of whether it
