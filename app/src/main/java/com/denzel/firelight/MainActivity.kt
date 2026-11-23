@@ -2384,6 +2384,19 @@ class MainActivity : Activity() {
             }
         }
 
+        // RGB brightness in hardware catalogue mode is a separate legacy F1
+        // command. Keep only its newest unsent value, just like manual RGB.
+        if (isBridgeRgbBrightnessFrame(frame)) {
+            val target = frame[1]
+            val iterator = bridgeWriteQueue.iterator()
+            while (iterator.hasNext()) {
+                val queued = iterator.next()
+                if (isBridgeRgbBrightnessFrame(queued) && queued[1] == target) {
+                    iterator.remove()
+                }
+            }
+        }
+
         if (coalesceColor) {
             // Keep only the newest unsent RGB color, regardless of whether it
             // was queued in the old F1 format or the compact F2 format.
@@ -2408,11 +2421,22 @@ class MainActivity : Activity() {
         scheduleBridgeWrite()
     }
 
+    private fun isBridgeRgbBrightnessFrame(frame: ByteArray): Boolean =
+        frame.size == 11 &&
+            frame[0] == 0xF1.toByte() &&
+            frame[1] == 0x02.toByte() &&
+            frame[2] == 0x7E.toByte() &&
+            frame[3] == 0x04.toByte() &&
+            frame[4] == 0x01.toByte()
+
     private fun isBridgeRgbColorFrame(frame: ByteArray): Boolean =
         frame.size == 8 &&
             frame[0] == 0xF2.toByte() &&
             frame[2] == 0x01.toByte() &&
             frame[3] == 0x04.toByte()
+
+    private fun isBridgeRgbRealtimeFrame(frame: ByteArray): Boolean =
+        isBridgeRgbColorFrame(frame) || isBridgeRgbBrightnessFrame(frame)
 
     // Keep a single scheduled drain. New color-wheel events may replace the
     // queued color, but cannot pull the next BLE write forward and bypass pacing.
@@ -2460,9 +2484,9 @@ class MainActivity : Activity() {
                 bridgeWriteQueue.removeFirst()
                 lastWriteAt = SystemClock.uptimeMillis()
 
-                // Continuous manual RGB color changes are capped at about 30
-                // updates/second. Other commands retain the existing 10 ms gap.
-                val pacingDelay = if (isBridgeRgbColorFrame(frame)) 33L else 10L
+                // Manual RGB color and hardware-mode brightness share one
+                // 30 updates/second ceiling. Other commands keep the 10 ms gap.
+                val pacingDelay = if (isBridgeRgbRealtimeFrame(frame)) 33L else 10L
                 bridgeNextWriteAt = SystemClock.uptimeMillis() + pacingDelay
 
                 if (bridgeWriteWithoutResponse) {
