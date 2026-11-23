@@ -2286,7 +2286,9 @@ class MainActivity : Activity() {
         d.flushQueued=false
         val packet=d.pending ?: return;d.pending=null
         val g=d.gatt ?: return;val ch=d.characteristic ?: return
-        writeBlePacketTo(g, ch, packet, d.isMelk)
+        // Color-wheel updates are replaceable: keep only the newest unsent
+        // color for this strip instead of letting stale colors build up.
+        writeBlePacketTo(g, ch, packet, d.isMelk, coalesceColor = true)
         d.lastWrite=SystemClock.uptimeMillis()
         if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else 35L)}
     }
@@ -2297,13 +2299,36 @@ class MainActivity : Activity() {
     // Both virtual strips share one physical GATT link. The Arduino frame is
     // F1 + target (01=MELK, 02=RGB) + the unchanged nine-byte strip packet.
     private fun writeBlePacketTo(
-        g: BluetoothGatt, char: BluetoothGattCharacteristic, packet: ByteArray, isMelk: Boolean
+        g: BluetoothGatt,
+        char: BluetoothGattCharacteristic,
+        packet: ByteArray,
+        isMelk: Boolean,
+        coalesceColor: Boolean = false
     ) {
         if (g !== bridgeGatt || char.uuid != writeUUID || packet.size != 9) return
         val frame = ByteArray(11)
         frame[0] = 0xF1.toByte()
         frame[1] = if (isMelk) 0x01 else 0x02
         System.arraycopy(packet, 0, frame, 2, 9)
+
+        if (coalesceColor) {
+            // Strip color packets have command bytes 05 03. Remove only
+            // unsent color frames for the same target; leave every other
+            // command (power, mode, speed, etc.) in its original order.
+            val target = frame[1]
+            val iterator = bridgeWriteQueue.iterator()
+            while (iterator.hasNext()) {
+                val queued = iterator.next()
+                if (queued.size == 11 &&
+                    queued[1] == target &&
+                    queued[4] == 0x05.toByte() &&
+                    queued[5] == 0x03.toByte()
+                ) {
+                    iterator.remove()
+                }
+            }
+        }
+
         bridgeWriteQueue.addLast(frame)
         if (bridgeWriteRunner == null) bridgeWriteRunner = Runnable { drainBridgeWriteQueue() }
         handler.removeCallbacks(bridgeWriteRunner!!)
