@@ -2277,6 +2277,23 @@ class MainActivity : Activity() {
 
     private fun sendRGBTo(d:DeviceSession,r:Int,g:Int,b:Int) {
         if(!d.connected||d.characteristic==null||d.gatt==null)return
+
+        // Manual RGB color + brightness are sent as one compact F2 command.
+        // Software effects and MELK keep using the existing F1 strip packets.
+        if (!d.isMelk && d.mode == EffectMode.NONE) {
+            val gatt = d.gatt ?: return
+            val characteristic = d.characteristic ?: return
+            val frame = byteArrayOf(
+                0xF2.toByte(), 0x02, 0x01, 0x04,
+                r.coerceIn(0, 255).toByte(),
+                g.coerceIn(0, 255).toByte(),
+                b.coerceIn(0, 255).toByte(),
+                d.brightness.coerceIn(0, 100).toByte()
+            )
+            enqueueBridgeFrame(gatt, characteristic, frame, coalesceColor = true)
+            return
+        }
+
         val factor=if (d.isMelk) 1.0 else d.brightness/100.0
         val rr=(r*factor).toInt().coerceIn(0,255);val gg=(g*factor).toInt().coerceIn(0,255);val bb=(b*factor).toInt().coerceIn(0,255)
         d.pending=if(d.isMelk) byteArrayOf(0x7E,0,5,3,rr.toByte(),gg.toByte(),bb.toByte(),0,0xEF.toByte())
@@ -2319,21 +2336,35 @@ class MainActivity : Activity() {
         frame[1] = if (isMelk) 0x01 else 0x02
         System.arraycopy(packet, 0, frame, 2, 9)
 
+        enqueueBridgeFrame(g, char, frame, coalesceColor)
+    }
+
+    // Shared serialized queue for both legacy F1 and compact F2 bridge frames.
+    private fun enqueueBridgeFrame(
+        g: BluetoothGatt,
+        char: BluetoothGattCharacteristic,
+        frame: ByteArray,
+        coalesceColor: Boolean = false
+    ) {
+        if (g !== bridgeGatt || char.uuid != writeUUID) return
+
         if (coalesceColor) {
-            // Strip color packets have command bytes 05 03. Remove only
-            // unsent color frames for the same target; leave every other
-            // command (power, mode, speed, etc.) in its original order.
+            // Keep only the newest unsent RGB color, regardless of whether it
+            // was queued in the old F1 format or the compact F2 format.
             val target = frame[1]
             val iterator = bridgeWriteQueue.iterator()
             while (iterator.hasNext()) {
                 val queued = iterator.next()
-                if (queued.size == 11 &&
+                val legacyColor = queued.size == 11 &&
+                    queued[0] == 0xF1.toByte() &&
                     queued[1] == target &&
                     queued[4] == 0x05.toByte() &&
                     queued[5] == 0x03.toByte()
-                ) {
-                    iterator.remove()
-                }
+                val compactColor = queued.size == 8 &&
+                    queued[0] == 0xF2.toByte() &&
+                    queued[1] == target &&
+                    queued[2] == 0x01.toByte()
+                if (legacyColor || compactColor) iterator.remove()
             }
         }
 
