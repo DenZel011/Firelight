@@ -996,7 +996,7 @@ class MainActivity : Activity() {
         addModernSlider(musicCard, "Чутливість мікрофона", musicSensitivity, 100, "%", 2) { value ->
             musicSensitivity = value.coerceIn(0, 100)
             selectedSessions().filter { it.isMelk && it.connected && it.mode == EffectMode.MIC }.forEach { d ->
-                sendMelkMusicProgram(d, d.micEffect, musicSensitivity)
+                sendMelkMusicSensitivity(d, musicSensitivity)
             }
         }
 
@@ -2238,6 +2238,18 @@ class MainActivity : Activity() {
         enqueueBridgeFrame(gatt, characteristic, frame)
         session.micEnabled = true
         session.micEffect = effect.coerceIn(1, 8)
+        session.micSensitivity = sensitivity.coerceIn(0, 100)
+    }
+
+    private fun sendMelkMusicSensitivity(session: DeviceSession, sensitivity: Int) {
+        if (!session.isMelk || !session.connected) return
+        val gatt = session.gatt ?: return
+        val characteristic = session.characteristic ?: return
+        val frame = byteArrayOf(
+            0xF2.toByte(), 0x01, 0x06,
+            sensitivity.coerceIn(0, 100).toByte()
+        )
+        enqueueBridgeFrame(gatt, characteristic, frame)
         session.micSensitivity = sensitivity.coerceIn(0, 100)
     }
 
