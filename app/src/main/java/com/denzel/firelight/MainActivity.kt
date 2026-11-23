@@ -42,6 +42,8 @@ class MainActivity : Activity() {
     // Enabled only when the bridge advertises WRITE_WITHOUT_RESPONSE.
     private var bridgeWriteWithoutResponse = false
     private var bridgeWriteRunner: Runnable? = null
+    private var bridgeWriteScheduled = false
+    private var bridgeNextWriteAt = 0L
     private var bridgeClosing = false
     private var bridgeCloseTimeout: Runnable? = null
     private var gatt: BluetoothGatt? = null
@@ -1808,7 +1810,7 @@ class MainActivity : Activity() {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { this@MainActivity.status.text = "Firelight Bridge підключено · статус активний" }
             }
-            handler.post { drainBridgeWriteQueue() }
+            handler.post { scheduleBridgeWrite() }
         }
 
         override fun onCharacteristicWrite(
@@ -1821,7 +1823,7 @@ class MainActivity : Activity() {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { this@MainActivity.status.text = "Міст не прийняв BLE-команду (код $status)" }
             }
-            handler.post { drainBridgeWriteQueue() }
+            handler.post { scheduleBridgeWrite() }
         }
     }
 
@@ -2403,15 +2405,41 @@ class MainActivity : Activity() {
         }
 
         bridgeWriteQueue.addLast(frame)
-        if (bridgeWriteRunner == null) bridgeWriteRunner = Runnable { drainBridgeWriteQueue() }
-        handler.removeCallbacks(bridgeWriteRunner!!)
-        handler.post(bridgeWriteRunner!!)
+        scheduleBridgeWrite()
+    }
+
+    private fun isBridgeRgbColorFrame(frame: ByteArray): Boolean =
+        frame.size == 8 &&
+            frame[0] == 0xF2.toByte() &&
+            frame[2] == 0x01.toByte() &&
+            frame[3] == 0x04.toByte()
+
+    // Keep a single scheduled drain. New color-wheel events may replace the
+    // queued color, but cannot pull the next BLE write forward and bypass pacing.
+    private fun scheduleBridgeWrite(delayMs: Long = 0L) {
+        if (bridgeWriteScheduled || bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
+        if (bridgeWriteRunner == null) {
+            bridgeWriteRunner = Runnable {
+                bridgeWriteScheduled = false
+                drainBridgeWriteQueue()
+            }
+        }
+        bridgeWriteScheduled = true
+        handler.postDelayed(bridgeWriteRunner!!, delayMs.coerceAtLeast(0L))
     }
 
     private fun drainBridgeWriteQueue() {
+        bridgeWriteScheduled = false
         val activeGatt = bridgeGatt ?: return
         val rx = bridgeRxCharacteristic ?: return
         if (!bridgeWriteReady || bridgeWriteInFlight || bridgeWriteQueue.isEmpty()) return
+
+        val wait = (bridgeNextWriteAt - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+        if (wait > 0L) {
+            scheduleBridgeWrite(wait)
+            return
+        }
+
         val frame = bridgeWriteQueue.peekFirst() ?: return
         val writeType = if (bridgeWriteWithoutResponse)
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
@@ -2431,18 +2459,24 @@ class MainActivity : Activity() {
             if (result == BluetoothGatt.GATT_SUCCESS) {
                 bridgeWriteQueue.removeFirst()
                 lastWriteAt = SystemClock.uptimeMillis()
+
+                // Continuous manual RGB color changes are capped at about 30
+                // updates/second. Other commands retain the existing 10 ms gap.
+                val pacingDelay = if (isBridgeRgbColorFrame(frame)) 33L else 10L
+                bridgeNextWriteAt = SystemClock.uptimeMillis() + pacingDelay
+
                 if (bridgeWriteWithoutResponse) {
-                    // Do not wait for a GATT response that this write type does not provide.
-                    // A small pacing interval prevents flooding the ESP32 RX callback.
+                    // WRITE_NO_RESPONSE has no completion callback: schedule the
+                    // next packet explicitly, without allowing enqueue() to bypass it.
                     bridgeWriteInFlight = false
-                    handler.postDelayed({ drainBridgeWriteQueue() }, 10L)
+                    scheduleBridgeWrite(pacingDelay)
                 } else {
                     bridgeWriteInFlight = true
                 }
             } else {
                 bridgeWriteQueue.removeFirst()
                 runOnUiThread { status.text = "BLE-міст не прийняв запис (код $result)" }
-                handler.postDelayed({ drainBridgeWriteQueue() }, 40L)
+                scheduleBridgeWrite(40L)
             }
         } catch (_: SecurityException) {
             bridgeWriteQueue.clear()
@@ -2450,7 +2484,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             bridgeWriteQueue.removeFirst()
             runOnUiThread { status.text = "Помилка BLE-запису: ${e.message}" }
-            handler.postDelayed({ drainBridgeWriteQueue() }, 40L)
+            scheduleBridgeWrite(40L)
         }
     }
 
@@ -2533,6 +2567,7 @@ class MainActivity : Activity() {
             clearBleWriteQueue(d)
         }
         bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false; bridgeWriteWithoutResponse=false
+        bridgeWriteScheduled=false; bridgeNextWriteAt=0L
         bridgeWriteRunner?.let { handler.removeCallbacks(it) }
         bridgeWriteRunner=null
         bridgeRxCharacteristic=null
