@@ -1866,7 +1866,7 @@ class MainActivity : Activity() {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 runOnUiThread { this@MainActivity.status.text = "Міст не прийняв BLE-команду (код $status)" }
             }
-            handler.postDelayed({ drainBridgeWriteQueue() }, 12L)
+            handler.post { drainBridgeWriteQueue() }
         }
     }
 
