@@ -134,6 +134,7 @@ class MainActivity : Activity() {
     private val targetAddress = "BE:27:8A:00:73:DE"
     private val melkAddress = "BE:28:96:00:42:2C"
     private val thirdAddress = "BE:27:8A:00:01:D0"
+    private val fourthAddress = "BE:27:8A:00:45:28"
     private var isMelkDevice = false
     private val powerNotifyUUID = UUID.fromString("7b7a0003-6d2a-4f9b-9c4e-3d4b2a110001")
     private val cccdUUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
@@ -189,11 +190,13 @@ class MainActivity : Activity() {
         managedDeviceAddresses.add(targetAddress.uppercase())
         managedDeviceAddresses.add(melkAddress.uppercase())
         managedDeviceAddresses.add(thirdAddress.uppercase())
+        managedDeviceAddresses.add(fourthAddress.uppercase())
         getSharedPreferences("firelight_devices", MODE_PRIVATE).getStringSet("addresses", null)?.let { saved ->
             managedDeviceAddresses.clear()
             managedDeviceAddresses.addAll(saved.map { it.uppercase() })
             if (managedDeviceAddresses.isEmpty()) managedDeviceAddresses.add(targetAddress.uppercase())
             managedDeviceAddresses.add(thirdAddress.uppercase())
+            managedDeviceAddresses.add(fourthAddress.uppercase())
         }
         selectedDeviceAddresses.clear()
         selectedDeviceAddress = ""
@@ -1111,6 +1114,7 @@ class MainActivity : Activity() {
             address.equals(melkAddress, true) -> deviceNames[1]
             address.equals(targetAddress, true) -> deviceNames[0]
             address.equals(thirdAddress, true) -> "STRIP3"
+            address.equals(fourthAddress, true) -> "STRIP4"
             else -> discoveredDevices[address.uppercase()]?.name?.takeIf { it.isNotBlank() } ?: "BLE-пристрій"
         }
         return getSharedPreferences("firelight_device_names", MODE_PRIVATE)
@@ -1413,7 +1417,9 @@ class MainActivity : Activity() {
             val defaultName = when (device.targetId) {
                 0x01 -> deviceNames[1]
                 0x02 -> deviceNames[0]
-                else -> "STRIP3"
+                0x03 -> "STRIP3"
+                0x04 -> "STRIP4"
+                else -> "STRIP"
             }
             content.addView(TextView(this).apply {
                 text = defaultName
@@ -1672,6 +1678,9 @@ class MainActivity : Activity() {
         sessions.getOrPut(thirdAddress.uppercase()) {
             DeviceSession(thirdAddress.uppercase(), false, 0x03)
         }
+        sessions.getOrPut(fourthAddress.uppercase()) {
+            DeviceSession(fourthAddress.uppercase(), false, 0x04)
+        }
         status.text = "Підключення до Firelight Bridge…"
         try {
             bridgeGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
@@ -1756,9 +1765,10 @@ class MainActivity : Activity() {
                 selectedDeviceAddresses.add(targetAddress.uppercase())
                 selectedDeviceAddresses.add(melkAddress.uppercase())
                 selectedDeviceAddresses.add(thirdAddress.uppercase())
+                selectedDeviceAddresses.add(fourthAddress.uppercase())
                 if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = targetAddress.uppercase()
                 activateSelectedSession()
-                status.text = "Firelight Bridge підключено · 3 цілі готові"
+                status.text = "Firelight Bridge підключено · 4 цілі готові"
                 refreshDevicePicker()
             }
 
@@ -2391,7 +2401,7 @@ class MainActivity : Activity() {
     private fun sendRGB(r:Int,g:Int,b:Int) { selectedSessions().forEach{sendRGBTo(it,r,g,b)} }
 
     // All strip sessions share one physical GATT link. The Arduino frame is
-    // F1 + target (01=MELK, 02=RGB, 03=third RGB) + the unchanged nine-byte packet.
+    // F1 + target (01=MELK, 02-04=RGB) + the unchanged nine-byte packet.
     private fun writeBlePacketTo(
         g: BluetoothGatt,
         char: BluetoothGattCharacteristic,
