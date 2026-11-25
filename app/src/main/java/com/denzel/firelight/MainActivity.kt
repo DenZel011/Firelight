@@ -55,7 +55,7 @@ class MainActivity : Activity() {
         val address: String, val isMelk: Boolean, val targetId: Int,
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
-        var connected: Boolean = false, var stripOn: Boolean = true, var stripStateKnown: Boolean = true,
+        var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
         var mode: EffectMode = EffectMode.NONE,
         var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
@@ -1719,9 +1719,8 @@ class MainActivity : Activity() {
                     session.gatt = null
                     session.characteristic = null
                     session.notifyCharacteristic = null
-                    session.stripStateKnown = false
-                    session.stripOn = false
-                    stopActiveEffect(session)
+                    // A BLE disconnect says nothing about the strip's power or active program.
+                    // Keep the last known per-device state for the next bridge connection.
                 }
                 try { g.close() } catch (_: Exception) {}
                 bridgeGatt = null
@@ -1757,15 +1756,11 @@ class MainActivity : Activity() {
                 session.characteristic = rx
                 session.notifyCharacteristic = bridgeStatus
                 session.connected = true
-                session.stripStateKnown = true
-                session.stripOn = true
+                // Do not invent power state on reconnect; wait for the bridge's
+                // per-target state report before marking it as known.
             }
             runOnUiThread {
-                selectedDeviceAddresses.clear()
-                selectedDeviceAddresses.add(targetAddress.uppercase())
-                selectedDeviceAddresses.add(melkAddress.uppercase())
-                selectedDeviceAddresses.add(thirdAddress.uppercase())
-                selectedDeviceAddresses.add(fourthAddress.uppercase())
+                // Preserve the user's target selection across reconnects.
                 if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = targetAddress.uppercase()
                 activateSelectedSession()
                 status.text = "Firelight Bridge підключено · 4 цілі готові"
@@ -2717,9 +2712,9 @@ class MainActivity : Activity() {
     private fun closeGattConnection() {
         handler.removeCallbacks(powerStateTimeout)
         sessions.values.forEach { d ->
-            stopActiveEffect(d)
+            // Closing the phone-to-bridge link must not alter the remembered
+            // state of the physical strip or clear its selected effect.
             d.gatt=null;d.characteristic=null;d.notifyCharacteristic=null;d.connected=false
-            d.stripOn=false;d.stripStateKnown=false
             clearBleWriteQueue(d)
         }
         bridgeWriteQueue.clear(); bridgeWriteInFlight=false; bridgeWriteReady=false; bridgeWriteWithoutResponse=false
@@ -2762,7 +2757,7 @@ class MainActivity : Activity() {
     }
 
     private fun disconnect() {
-        stopScan();closeGattConnection();sessions.clear();selectedDeviceAddresses.clear();selectedDeviceAddress=""
+        stopScan();closeGattConnection();selectedDeviceAddresses.clear();selectedDeviceAddress=""
         status.text="Статус: не підключено";refreshDevicePicker();bulbButton.setLit(null)
         fireButton.text="Увімкнути вогонь";rainbowButton.text="Увімкнути веселку"
     }
