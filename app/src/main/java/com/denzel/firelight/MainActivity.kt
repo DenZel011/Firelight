@@ -52,7 +52,7 @@ class MainActivity : Activity() {
     private data class BleCatalogSpec(val hardwareMode: Int, val palette: IntArray, val style: BleCatalogStyle)
 
     private data class DeviceSession(
-        val address: String, val isMelk: Boolean,
+        val address: String, val isMelk: Boolean, val targetId: Int,
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
         var connected: Boolean = false, var stripOn: Boolean = true, var stripStateKnown: Boolean = true,
@@ -133,6 +133,7 @@ class MainActivity : Activity() {
     private var lastWriteAt = 0L
     private val targetAddress = "BE:27:8A:00:73:DE"
     private val melkAddress = "BE:28:96:00:42:2C"
+    private val thirdAddress = "BE:27:8A:00:01:D0"
     private var isMelkDevice = false
     private val powerNotifyUUID = UUID.fromString("7b7a0003-6d2a-4f9b-9c4e-3d4b2a110001")
     private val cccdUUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
@@ -187,10 +188,12 @@ class MainActivity : Activity() {
         createInterface()
         managedDeviceAddresses.add(targetAddress.uppercase())
         managedDeviceAddresses.add(melkAddress.uppercase())
+        managedDeviceAddresses.add(thirdAddress.uppercase())
         getSharedPreferences("firelight_devices", MODE_PRIVATE).getStringSet("addresses", null)?.let { saved ->
             managedDeviceAddresses.clear()
             managedDeviceAddresses.addAll(saved.map { it.uppercase() })
             if (managedDeviceAddresses.isEmpty()) managedDeviceAddresses.add(targetAddress.uppercase())
+            managedDeviceAddresses.add(thirdAddress.uppercase())
         }
         selectedDeviceAddresses.clear()
         selectedDeviceAddress = ""
@@ -1107,6 +1110,7 @@ class MainActivity : Activity() {
         val fallback = when {
             address.equals(melkAddress, true) -> deviceNames[1]
             address.equals(targetAddress, true) -> deviceNames[0]
+            address.equals(thirdAddress, true) -> "STRIP3"
             else -> discoveredDevices[address.uppercase()]?.name?.takeIf { it.isNotBlank() } ?: "BLE-пристрій"
         }
         return getSharedPreferences("firelight_device_names", MODE_PRIVATE)
@@ -1406,7 +1410,11 @@ class MainActivity : Activity() {
             setPadding(dp(20), dp(8), dp(20), dp(4))
         }
         connectedDevices.forEachIndexed { index, device ->
-            val defaultName = if (device.isMelk) deviceNames[1] else deviceNames[0]
+            val defaultName = when (device.targetId) {
+                0x01 -> deviceNames[1]
+                0x02 -> deviceNames[0]
+                else -> "STRIP3"
+            }
             content.addView(TextView(this).apply {
                 text = defaultName
                 textSize = 12f
@@ -1657,10 +1665,13 @@ class MainActivity : Activity() {
     private fun connect(device: BluetoothDevice) {
         if (bridgeGatt != null) return
         sessions.getOrPut(targetAddress.uppercase()) {
-            DeviceSession(targetAddress.uppercase(), false)
+            DeviceSession(targetAddress.uppercase(), false, 0x02)
         }
         sessions.getOrPut(melkAddress.uppercase()) {
-            DeviceSession(melkAddress.uppercase(), true)
+            DeviceSession(melkAddress.uppercase(), true, 0x01)
+        }
+        sessions.getOrPut(thirdAddress.uppercase()) {
+            DeviceSession(thirdAddress.uppercase(), false, 0x03)
         }
         status.text = "Підключення до Firelight Bridge…"
         try {
@@ -1745,6 +1756,7 @@ class MainActivity : Activity() {
                 selectedDeviceAddresses.clear()
                 selectedDeviceAddresses.add(targetAddress.uppercase())
                 selectedDeviceAddresses.add(melkAddress.uppercase())
+                selectedDeviceAddresses.add(thirdAddress.uppercase())
                 if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = targetAddress.uppercase()
                 activateSelectedSession()
                 status.text = "Firelight Bridge підключено · RGB + MELK готові"
@@ -1853,7 +1865,7 @@ class MainActivity : Activity() {
                 session.flushRunner?.let { handler.removeCallbacks(it) }
             }
             val frame = byteArrayOf(
-                0xF2.toByte(), 0x02, 0x02, 0x01,
+                0xF2.toByte(), session.targetId.toByte(), 0x02, 0x01,
                 if (on) 0x01 else 0x00
             )
             enqueueBridgeFrame(
@@ -2293,7 +2305,7 @@ class MainActivity : Activity() {
     private fun sendEffectCommand(d: DeviceSession, mode: EffectMode, start: Boolean) {
         val gatt = d.gatt ?: return
         val characteristic = d.characteristic ?: return
-        val target = if (d.isMelk) 0x01 else 0x02
+        val target = d.targetId
         val command = when (mode) {
             EffectMode.FIRE -> 0x03
             EffectMode.RAINBOW -> 0x04
@@ -2342,7 +2354,7 @@ class MainActivity : Activity() {
             val gatt = d.gatt ?: return
             val characteristic = d.characteristic ?: return
             val frame = byteArrayOf(
-                0xF2.toByte(), 0x02, 0x01, 0x04,
+                0xF2.toByte(), d.targetId.toByte(), 0x01, 0x04,
                 r.coerceIn(0, 255).toByte(),
                 g.coerceIn(0, 255).toByte(),
                 b.coerceIn(0, 255).toByte(),
@@ -2371,7 +2383,7 @@ class MainActivity : Activity() {
         val g=d.gatt ?: return;val ch=d.characteristic ?: return
         // Color-wheel updates are replaceable: keep only the newest unsent
         // color for this strip instead of letting stale colors build up.
-        writeBlePacketTo(g, ch, packet, d.isMelk, coalesceColor = true)
+        writeBlePacketTo(g, ch, packet, d.targetId, coalesceColor = true)
         d.lastWrite=SystemClock.uptimeMillis()
         if(d.pending!=null&&!d.flushQueued){d.flushQueued=true;handler.postDelayed(d.flushRunner!!,if(d.isMelk && d.mode==EffectMode.RAINBOW)50L else if(d.isMelk)100L else 35L)}
     }
@@ -2379,19 +2391,19 @@ class MainActivity : Activity() {
     private fun sendCurrentColor() { selectedSessions().forEach{sendRGBTo(it,it.red,it.green,it.blue)} }
     private fun sendRGB(r:Int,g:Int,b:Int) { selectedSessions().forEach{sendRGBTo(it,r,g,b)} }
 
-    // Both virtual strips share one physical GATT link. The Arduino frame is
-    // F1 + target (01=MELK, 02=RGB) + the unchanged nine-byte strip packet.
+    // All strip sessions share one physical GATT link. The Arduino frame is
+    // F1 + target (01=MELK, 02=RGB, 03=third RGB) + the unchanged nine-byte packet.
     private fun writeBlePacketTo(
         g: BluetoothGatt,
         char: BluetoothGattCharacteristic,
         packet: ByteArray,
-        isMelk: Boolean,
+        targetId: Int,
         coalesceColor: Boolean = false
     ) {
         if (g !== bridgeGatt || char.uuid != writeUUID || packet.size != 9) return
         val frame = ByteArray(11)
         frame[0] = 0xF1.toByte()
-        frame[1] = if (isMelk) 0x01 else 0x02
+        frame[1] = targetId.toByte()
         System.arraycopy(packet, 0, frame, 2, 9)
 
         enqueueBridgeFrame(g, char, frame, coalesceColor)
@@ -2461,7 +2473,7 @@ class MainActivity : Activity() {
     private fun isBridgeRgbBrightnessFrame(frame: ByteArray): Boolean =
         frame.size == 11 &&
             frame[0] == 0xF1.toByte() &&
-            frame[1] == 0x02.toByte() &&
+            (frame[1] == 0x02.toByte() || frame[1] == 0x03.toByte()) &&
             frame[2] == 0x7E.toByte() &&
             frame[3] == 0x04.toByte() &&
             frame[4] == 0x01.toByte()
@@ -2469,6 +2481,7 @@ class MainActivity : Activity() {
     private fun isBridgeRgbColorFrame(frame: ByteArray): Boolean =
         frame.size == 8 &&
             frame[0] == 0xF2.toByte() &&
+            (frame[1] == 0x02.toByte() || frame[1] == 0x03.toByte()) &&
             frame[2] == 0x01.toByte() &&
             frame[3] == 0x04.toByte()
 
