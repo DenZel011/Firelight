@@ -1083,6 +1083,7 @@ class MainActivity : Activity() {
                 if (i == index) label.setTypeface(label.typeface, android.graphics.Typeface.BOLD)
                 else label.setTypeface(label.typeface, android.graphics.Typeface.NORMAL)
             }
+            refreshSelectionDisplay?.invoke()
         }
 
         navLabels.forEachIndexed { index, labelText ->
@@ -1115,10 +1116,10 @@ class MainActivity : Activity() {
             val hasSelection = selectedDeviceAddresses.isNotEmpty()
             colorCard.visibility = if (hasSelection) View.VISIBLE else View.GONE
             nav.visibility = if (hasSelection) View.VISIBLE else View.GONE
-            if (pageHost.childCount >= 2) {
+            if (pageHost.childCount > 0 && pageHost.getChildAt(0) !== noActiveDeviceView) {
                 pageHost.getChildAt(0).visibility = if (hasSelection) View.VISIBLE else View.GONE
-                noActiveDeviceView.visibility = if (hasSelection) View.GONE else View.VISIBLE
             }
+            noActiveDeviceView.visibility = if (hasSelection) View.GONE else View.VISIBLE
         }
         selectTab(0)
         refreshSelectionDisplay?.invoke()
