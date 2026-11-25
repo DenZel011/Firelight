@@ -31,7 +31,7 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     private var scanner: BluetoothLeScanner? = null
-    // One physical GATT connection to the Arduino; the two strip sessions below
+    // One physical GATT connection to the Arduino; the strip sessions below
     // remain logical targets routed through its RX characteristic.
     private var bridgeGatt: BluetoothGatt? = null
     private var bridgeRxCharacteristic: BluetoothGattCharacteristic? = null
@@ -1615,8 +1615,7 @@ class MainActivity : Activity() {
     }
 
     private fun classifyDeviceLayout(device: BluetoothDevice): DeviceLayout {
-        // ELK-BLEDOB drives every LED with one shared RGB value. The future
-        // sequential panel will be added here as a separate device identity.
+        // MELK uses sequential layout; RGB targets (02 and 03) use simultaneous layout.
         return if (device.address.equals(melkAddress, ignoreCase = true)) {
             DeviceLayout.SEQUENTIAL
         } else {
@@ -1759,7 +1758,7 @@ class MainActivity : Activity() {
                 selectedDeviceAddresses.add(thirdAddress.uppercase())
                 if (selectedDeviceAddress.isBlank()) selectedDeviceAddress = targetAddress.uppercase()
                 activateSelectedSession()
-                status.text = "Firelight Bridge підключено · RGB + MELK готові"
+                status.text = "Firelight Bridge підключено · 3 цілі готові"
                 refreshDevicePicker()
             }
 
