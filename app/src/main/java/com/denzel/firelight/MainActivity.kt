@@ -2446,12 +2446,15 @@ class MainActivity : Activity() {
         }
 
         if (coalesceColor) {
-            // Keep only the newest unsent RGB color, regardless of whether it
-            // was queued in the old F1 format or the compact F2 format.
+            // Replace a pending color for this target IN ITS CURRENT QUEUE
+            // POSITION. Removing it and appending it to the tail lets an
+            // earlier target continuously jump ahead during color-wheel
+            // dragging, starving later targets until ACTION_UP.
             val target = frame[1]
-            val iterator = bridgeWriteQueue.iterator()
-            while (iterator.hasNext()) {
-                val queued = iterator.next()
+            val updatedQueue = java.util.ArrayDeque<ByteArray>()
+            var replaced = false
+            while (bridgeWriteQueue.isNotEmpty()) {
+                val queued = bridgeWriteQueue.removeFirst()
                 val legacyColor = queued.size == 11 &&
                     queued[0] == 0xF1.toByte() &&
                     queued[1] == target &&
@@ -2461,11 +2464,20 @@ class MainActivity : Activity() {
                     queued[0] == 0xF2.toByte() &&
                     queued[1] == target &&
                     queued[2] == 0x01.toByte()
-                if (legacyColor || compactColor) iterator.remove()
+                if (legacyColor || compactColor) {
+                    if (!replaced) {
+                        updatedQueue.addLast(frame)
+                        replaced = true
+                    }
+                } else {
+                    updatedQueue.addLast(queued)
+                }
             }
+            bridgeWriteQueue.addAll(updatedQueue)
+            if (!replaced) bridgeWriteQueue.addLast(frame)
+        } else {
+            bridgeWriteQueue.addLast(frame)
         }
-
-        bridgeWriteQueue.addLast(frame)
         scheduleBridgeWrite()
     }
 
@@ -2535,7 +2547,7 @@ class MainActivity : Activity() {
 
                 // Manual RGB color and hardware-mode brightness share one
                 // 30 updates/second ceiling. Other commands keep the 10 ms gap.
-                val pacingDelay = if (isBridgeRgbRealtimeFrame(frame)) 33L else 10L
+                val pacingDelay = if (isBridgeRgbRealtimeFrame(frame)) 16L else 10L
                 bridgeNextWriteAt = SystemClock.uptimeMillis() + pacingDelay
 
                 if (bridgeWriteWithoutResponse) {
