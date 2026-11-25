@@ -2472,7 +2472,7 @@ class MainActivity : Activity() {
     private fun isBridgeRgbBrightnessFrame(frame: ByteArray): Boolean =
         frame.size == 11 &&
             frame[0] == 0xF1.toByte() &&
-            (frame[1] == 0x02.toByte() || frame[1] == 0x03.toByte()) &&
+            (frame[1].toInt() and 0xFF) in 0x02..0x04 &&
             frame[2] == 0x7E.toByte() &&
             frame[3] == 0x04.toByte() &&
             frame[4] == 0x01.toByte()
@@ -2480,7 +2480,7 @@ class MainActivity : Activity() {
     private fun isBridgeRgbColorFrame(frame: ByteArray): Boolean =
         frame.size == 8 &&
             frame[0] == 0xF2.toByte() &&
-            (frame[1] == 0x02.toByte() || frame[1] == 0x03.toByte()) &&
+            (frame[1].toInt() and 0xFF) in 0x02..0x04 &&
             frame[2] == 0x01.toByte() &&
             frame[3] == 0x04.toByte()
 
