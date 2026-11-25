@@ -56,6 +56,7 @@ class MainActivity : Activity() {
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
         var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
+        var configStateKnown: Boolean = false,
         var mode: EffectMode = EffectMode.NONE,
         var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
@@ -368,6 +369,7 @@ class MainActivity : Activity() {
             updatePreview()
             selectedSessions().forEach { d ->
                 d.red=red; d.green=green; d.blue=blue
+                d.configStateKnown = true
                 if (d.mode == EffectMode.CATALOG || d.mode == EffectMode.MIC) {
                     stopActiveEffect(d)
                     sendRGBTo(d, red, green, blue)
@@ -381,6 +383,23 @@ class MainActivity : Activity() {
         val wheelSize = dp(168)
         wheelFrame.addView(colorWheel, FrameLayout.LayoutParams(wheelSize, wheelSize, android.view.Gravity.CENTER))
         colorCard.addView(wheelFrame)
+
+        fun refreshColorWheelState() {
+            val chosen = selectedSessions()
+            val modes = chosen.map { it.mode }.distinct()
+            val colors = chosen.map { Triple(it.red, it.green, it.blue) }.distinct()
+            val canShowColor = chosen.isNotEmpty() && chosen.all { it.configStateKnown } &&
+                modes.size == 1 && modes.first() !in setOf(EffectMode.RAINBOW, EffectMode.MIC, EffectMode.CATALOG) &&
+                colors.size == 1
+            if (canShowColor) {
+                val color = colors.first()
+                red = color.first; green = color.second; blue = color.third
+                colorWheel.setSelectedColor(Color.rgb(red, green, blue), true)
+            } else {
+                colorWheel.setMarkerVisible(false)
+            }
+            if (::preview.isInitialized) updatePreview()
+        }
 
         preview = text("●  RGB  $red  /  $green  /  $blue", 13f, Color.rgb(red, green, blue), true).apply {
             gravity = android.view.Gravity.CENTER
@@ -1120,6 +1139,7 @@ class MainActivity : Activity() {
                 pageHost.getChildAt(0).visibility = if (hasSelection) View.VISIBLE else View.GONE
             }
             noActiveDeviceView.visibility = if (hasSelection) View.GONE else View.VISIBLE
+            refreshColorWheelState()
         }
         selectTab(0)
         refreshSelectionDisplay?.invoke()
@@ -2935,6 +2955,7 @@ private class ColorWheelView(
     private var selectedHue = 24f
     private var selectedAngle = 24f
     private var selectedSaturation = 0.95f
+    private var markerVisible = true
     private val density = resources.displayMetrics.density
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -2978,19 +2999,38 @@ private class ColorWheelView(
         wheelBitmap?.let {
             canvas.drawBitmap(it, null, android.graphics.RectF(0f, 0f, side, side), paint)
         }
-        val radius = side / 2f
-        val markerRadius = selectedSaturation * radius
-        val markerAngle = Math.toRadians(selectedAngle.toDouble())
-        val cx = radius + kotlin.math.cos(markerAngle).toFloat() * markerRadius
-        val cy = radius - kotlin.math.sin(markerAngle).toFloat() * markerRadius
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f * density
-        paint.color = Color.BLACK
-        canvas.drawCircle(cx, cy, 10f * density, paint)
-        paint.color = Color.WHITE
-        paint.strokeWidth = 2f * density
-        canvas.drawCircle(cx, cy, 7f * density, paint)
-        paint.style = Paint.Style.FILL
+        if (markerVisible) {
+            val radius = side / 2f
+            val markerRadius = selectedSaturation * radius
+            val markerAngle = Math.toRadians(selectedAngle.toDouble())
+            val cx = radius + kotlin.math.cos(markerAngle).toFloat() * markerRadius
+            val cy = radius - kotlin.math.sin(markerAngle).toFloat() * markerRadius
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f * density
+            paint.color = Color.BLACK
+            canvas.drawCircle(cx, cy, 10f * density, paint)
+            paint.color = Color.WHITE
+            paint.strokeWidth = 2f * density
+            canvas.drawCircle(cx, cy, 7f * density, paint)
+            paint.style = Paint.Style.FILL
+        }
+    }
+
+    fun setMarkerVisible(visible: Boolean) {
+        if (markerVisible != visible) {
+            markerVisible = visible
+            invalidate()
+        }
+    }
+
+    fun setSelectedColor(color: Int, showMarker: Boolean = true) {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        selectedHue = hsv[0]
+        selectedAngle = hsv[0]
+        selectedSaturation = hsv[1]
+        markerVisible = showMarker
+        invalidate()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -3028,6 +3068,7 @@ private class ColorWheelView(
         val angle = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360.0) % 360.0).toFloat()
         selectedAngle = angle
         selectedHue = angle
+        markerVisible = true
         onColorSelected(Color.HSVToColor(floatArrayOf(selectedHue, selectedSaturation, 1f)))
         invalidate()
     }
