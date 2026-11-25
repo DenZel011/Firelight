@@ -56,6 +56,7 @@ class MainActivity : Activity() {
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
         var connected: Boolean = false, var stripOn: Boolean = true, var stripStateKnown: Boolean = true,
+        var reconnectStripOn: Boolean = true,
         var mode: EffectMode = EffectMode.NONE,
         var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
@@ -1706,13 +1707,21 @@ class MainActivity : Activity() {
                 bridgeRxCharacteristic = null
                 bridgeStatusCharacteristic = null
                 sessions.values.forEach { session ->
+                    // Remember the real power state before the link drops.
+                    // Keep the selected effect and its parameters so it can
+                    // be restored after the bridge reconnects.
+                    session.reconnectStripOn = session.stripOn
                     session.connected = false
                     session.gatt = null
                     session.characteristic = null
                     session.notifyCharacteristic = null
                     session.stripStateKnown = false
                     session.stripOn = false
-                    stopActiveEffect(session)
+                    pauseActiveEffectForPowerOff(session)
+                    clearBleWriteQueue(session)
+                    session.pending = null
+                    session.flushQueued = false
+                    session.flushRunner?.let { handler.removeCallbacks(it) }
                 }
                 try { g.close() } catch (_: Exception) {}
                 bridgeGatt = null
@@ -1749,7 +1758,9 @@ class MainActivity : Activity() {
                 session.notifyCharacteristic = bridgeStatus
                 session.connected = true
                 session.stripStateKnown = true
-                session.stripOn = true
+                // Do not blindly mark every strip ON: restore its last known
+                // power state from immediately before the BLE disconnect.
+                session.stripOn = session.reconnectStripOn
             }
             runOnUiThread {
                 selectedDeviceAddresses.clear()
@@ -1787,6 +1798,20 @@ class MainActivity : Activity() {
                     }
                 } catch (_: Exception) {
                     bridgeWriteReady = true
+                }
+            }
+
+            // Restore the strips only after the bridge GATT services are ready.
+            // Queue ON before the saved effect command so Fire/Rainbow restart
+            // after the controller has finished its reconnect blink.
+            sessions.values.forEach { session ->
+                if (session.reconnectStripOn) {
+                    sendPowerCommand(session, true)
+                    handler.postDelayed({
+                        if (session.connected && session.stripOn) {
+                            resumeActiveEffectAfterPowerOn(session)
+                        }
+                    }, 220L)
                 }
             }
 
