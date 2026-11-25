@@ -1880,7 +1880,7 @@ class MainActivity : Activity() {
         } else {
             byteArrayOf(0x7E,0x04,0x04,0,0,0,0xFF.toByte(),0,0xEF.toByte())
         }
-        writeBlePacketTo(gatt, characteristic, packet, true)
+        writeBlePacketTo(gatt, characteristic, packet, session.targetId)
     }
 
     // BLE writes are serialized and paced. These controllers silently discard
@@ -1927,7 +1927,7 @@ class MainActivity : Activity() {
                     session.bleWriteScheduled = false
                     return
                 }
-                writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, next, false)
+                writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, next, session.targetId)
                 session.bleWriteLastAt = SystemClock.uptimeMillis()
                 if (session.bleWriteQueue.isNotEmpty()) {
                     handler.postDelayed(this, 50L)
@@ -2213,14 +2213,14 @@ class MainActivity : Activity() {
     private fun sendMelkMode(session: DeviceSession, mode: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x05, 0x03, mode.toByte(), 0x06, 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.targetId)
     }
 
     private fun sendMelkModeSpeed(session: DeviceSession, value: Int) {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x02, value.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.targetId)
     }
 
     private fun sendMelkBrightness(session: DeviceSession, value: Int) {
@@ -2269,7 +2269,7 @@ class MainActivity : Activity() {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x07, if (enabled) 0x01 else 0x00,
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.targetId)
         session.micEnabled = enabled
     }
 
@@ -2278,7 +2278,7 @@ class MainActivity : Activity() {
         val encoded = (0x80 + (effect.coerceIn(1, 8) - 1)).toByte()
         val packet = byteArrayOf(0x7E, 0x05, 0x03, encoded, 0x04,
             0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.targetId)
         session.micEffect = effect.coerceIn(1, 8)
     }
 
@@ -2286,7 +2286,7 @@ class MainActivity : Activity() {
         if (!session.isMelk || !session.connected) return
         val packet = byteArrayOf(0x7E, 0x04, 0x06, sensitivity.coerceIn(0, 100).toByte(),
             0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x00, 0xEF.toByte())
-        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, true)
+        writeBlePacketTo(session.gatt ?: return, session.characteristic ?: return, packet, session.targetId)
         session.micSensitivity = sensitivity.coerceIn(0, 100)
     }
 
