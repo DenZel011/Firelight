@@ -56,7 +56,7 @@ class MainActivity : Activity() {
         var gatt: BluetoothGatt? = null, var characteristic: BluetoothGattCharacteristic? = null,
         var notifyCharacteristic: BluetoothGattCharacteristic? = null,
         var connected: Boolean = false, var stripOn: Boolean = false, var stripStateKnown: Boolean = false,
-        var configStateKnown: Boolean = false,
+        var stripReachable: Boolean = false, var configStateKnown: Boolean = false,
         var mode: EffectMode = EffectMode.NONE,
         var micEnabled: Boolean = false, var micEffect: Int = 1, var micSensitivity: Int = 50,
         var red: Int = 255, var green: Int = 92, var blue: Int = 12, var brightness: Int = 100,
@@ -785,6 +785,7 @@ class MainActivity : Activity() {
                 if (d.isMelk) {
                     stopActiveEffect(d)
                     d.mode = EffectMode.CATALOG
+                    sendAppModeState(d, 4)
                     d.catalogEffectId = effect.id
                     if (!d.stripOn) {
                         d.stripOn = true
@@ -1693,6 +1694,7 @@ class MainActivity : Activity() {
             chosen.isEmpty()->"Обери підключений пристрій"
             chosen.size>1->"Обрано ${chosen.size} · керування групою"
             one==null || !one.stripStateKnown->"Підключено · стан стрічки невідомий"
+            !one.stripReachable->"Міст підключено · стрічка недоступна"
             one.stripOn->"Підключено · стрічка увімкнена"
             else->"Підключено · стрічка вимкнена"
         }
@@ -1869,6 +1871,11 @@ class MainActivity : Activity() {
 
     private fun handleBridgeStatus(value: ByteArray?) {
         if (value == null || value.isEmpty()) return
+        // ESP32 continuously reports one strip at a time using the 13-byte A1 frame.
+        if (value.size == 13 && value[0] == 0xA1.toByte()) {
+            handleStripStateReport(value)
+            return
+        }
         val message = String(value, Charsets.UTF_8).trim()
         if (message.isEmpty()) return
         if (message.startsWith("ERR:") || message.endsWith(":FAIL")) {
@@ -1876,6 +1883,44 @@ class MainActivity : Activity() {
         } else if (message.endsWith(":OK")) {
             runOnUiThread {
                 status.text = "Firelight Bridge · команду передано (${message.removePrefix("TX:").removeSuffix(":OK")})"
+            }
+        }
+    }
+
+    private fun handleStripStateReport(packet: ByteArray) {
+        val target = packet[1].toInt() and 0xFF
+        val session = sessions.values.firstOrNull { it.targetId == target } ?: return
+        val reachable = packet[2].toInt() != 0
+        val power = packet[3].toInt() != 0
+        val reportedMode = packet[4].toInt() and 0xFF
+
+        runOnUiThread {
+            session.stripReachable = reachable
+            session.stripOn = power
+            session.stripStateKnown = true
+            session.configStateKnown = reachable
+            session.mode = when (reportedMode) {
+                1 -> EffectMode.FIRE
+                2 -> EffectMode.RAINBOW
+                3 -> EffectMode.MIC
+                4 -> EffectMode.CATALOG
+                else -> EffectMode.NONE
+            }
+            session.red = packet[5].toInt() and 0xFF
+            session.green = packet[6].toInt() and 0xFF
+            session.blue = packet[7].toInt() and 0xFF
+            session.brightness = (packet[8].toInt() and 0xFF).coerceIn(0, 100)
+            session.speed = (packet[9].toInt() and 0xFF).coerceIn(1, 20)
+            session.rainbowSpeed = session.speed
+            session.spread = (packet[10].toInt() and 0xFF).coerceIn(0, 100)
+            session.micEffect = (packet[11].toInt() and 0xFF).coerceIn(1, 8)
+            session.micSensitivity = (packet[12].toInt() and 0xFF).coerceIn(0, 100)
+            session.micEnabled = reportedMode == 3
+
+            if (selectedDeviceAddresses.contains(session.address)) {
+                activateSelectedSession()
+            } else {
+                refreshDevicePicker()
             }
         }
     }
@@ -2126,6 +2171,7 @@ class MainActivity : Activity() {
     private fun startBleCatalogEffect(session: DeviceSession, effectId: Int, effectName: String, speed: Int) {
         stopActiveEffect(session)
         session.mode = EffectMode.CATALOG
+        sendAppModeState(session, 4)
         session.catalogEffectId = effectId
         // Drop stale BLE animation frames before the newly selected mode starts.
         if (!session.isMelk) {
@@ -2379,6 +2425,13 @@ class MainActivity : Activity() {
                 queued[2] == command.toByte()
             ) iterator.remove()
         }
+        enqueueBridgeFrame(gatt, characteristic, frame)
+    }
+
+    private fun sendAppModeState(d: DeviceSession, mode: Int) {
+        val gatt = d.gatt ?: return
+        val characteristic = d.characteristic ?: return
+        val frame = byteArrayOf(0xF2.toByte(), d.targetId.toByte(), 0x07, mode.toByte())
         enqueueBridgeFrame(gatt, characteristic, frame)
     }
 
@@ -2657,6 +2710,8 @@ class MainActivity : Activity() {
     }
 
     private fun stopActiveEffect(d:DeviceSession) {
+        val previousMode = d.mode
+        if (previousMode == EffectMode.CATALOG) sendAppModeState(d, 0)
         if (d.mode == EffectMode.FIRE || d.mode == EffectMode.RAINBOW) {
             sendEffectCommand(d, d.mode, false)
         }
