@@ -94,6 +94,7 @@ class MainActivity : Activity() {
     private var devicePopup: PopupWindow? = null
     private var refreshDevicePopup: (() -> Unit)? = null
     private var screenRoot: FrameLayout? = null
+    private var refreshSelectionDisplay: (() -> Unit)? = null
     private var drawerOverlay: FrameLayout? = null
     private var drawerPanel: LinearLayout? = null
     private val deviceNames = listOf("ELK-BLEDOB", "MELK-OA21 2C")
@@ -327,6 +328,12 @@ class MainActivity : Activity() {
         }
         firePage.setPadding(0, dp(2), 0, dp(8))
         pageHost.addView(firePage, FrameLayout.LayoutParams(-1, -1))
+        val noActiveDeviceView = text("НЕМАЄ АКТИВНОГО ПРИСТРОЮ", 24f, muted, true).apply {
+            gravity = android.view.Gravity.CENTER
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            letterSpacing = 0.04f
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
         val colorCard = card().apply {
             setPadding(dp(12), dp(0), dp(12), dp(0))
             clipChildren = false
@@ -1064,6 +1071,7 @@ class MainActivity : Activity() {
                     applyMusicProgram(selectedMusicIndex)
                 }
             }
+            pageHost.addView(noActiveDeviceView, FrameLayout.LayoutParams(-1, -1))
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
                     if (i == index) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
@@ -1103,7 +1111,17 @@ class MainActivity : Activity() {
         root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(7)
         })
+        refreshSelectionDisplay = {
+            val hasSelection = selectedDeviceAddresses.isNotEmpty()
+            colorCard.visibility = if (hasSelection) View.VISIBLE else View.GONE
+            nav.visibility = if (hasSelection) View.VISIBLE else View.GONE
+            if (pageHost.childCount >= 2) {
+                pageHost.getChildAt(0).visibility = if (hasSelection) View.VISIBLE else View.GONE
+                noActiveDeviceView.visibility = if (hasSelection) View.GONE else View.VISIBLE
+            }
+        }
         selectTab(0)
+        refreshSelectionDisplay?.invoke()
 
         screenRoot = FrameLayout(this).apply { addView(root, FrameLayout.LayoutParams(-1, -1)) }
         setContentView(screenRoot)
@@ -1635,12 +1653,6 @@ class MainActivity : Activity() {
     private fun activateSelectedSession() {
         val connectedAddresses = sessions.values.filter { it.connected }.map { it.address }.toSet()
         selectedDeviceAddresses.retainAll(connectedAddresses)
-        if (connectedAddresses.size == 1) {
-            selectedDeviceAddresses.clear()
-            selectedDeviceAddresses.add(connectedAddresses.first())
-        } else if (selectedDeviceAddresses.isEmpty() && connectedAddresses.isNotEmpty()) {
-            selectedDeviceAddresses.add(connectedAddresses.first())
-        }
         if (selectedDeviceAddress !in selectedDeviceAddresses) {
             selectedDeviceAddress = selectedDeviceAddresses.firstOrNull().orEmpty()
         }
@@ -1664,7 +1676,7 @@ class MainActivity : Activity() {
             else->"Підключено · стрічка вимкнена"
         }
         refreshDevicePicker()
-        refreshDevicePicker()
+        refreshSelectionDisplay?.invoke()
     }
 
     private fun connect(device: BluetoothDevice) {
@@ -2758,7 +2770,7 @@ class MainActivity : Activity() {
 
     private fun disconnect() {
         stopScan();closeGattConnection();selectedDeviceAddresses.clear();selectedDeviceAddress=""
-        status.text="Статус: не підключено";refreshDevicePicker();bulbButton.setLit(null)
+        status.text="Статус: не підключено";refreshDevicePicker();refreshSelectionDisplay?.invoke();bulbButton.setLit(null)
         fireButton.text="Увімкнути вогонь";rainbowButton.text="Увімкнути веселку"
     }
 
