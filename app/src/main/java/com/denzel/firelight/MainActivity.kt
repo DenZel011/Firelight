@@ -1938,7 +1938,7 @@ class MainActivity : Activity() {
     private fun handleBridgeStatus(value: ByteArray?) {
         if (value == null || value.isEmpty()) return
         // ESP32 continuously reports one strip at a time using the 13-byte A1 frame.
-        if (value.size == 13 && value[0] == 0xA1.toByte()) {
+        if ((value.size == 13 || value.size == 15) && value[0] == 0xA1.toByte()) {
             handleStripStateReport(value)
             return
         }
@@ -1982,6 +1982,11 @@ class MainActivity : Activity() {
             session.micEffect = (packet[11].toInt() and 0xFF).coerceIn(1, 8)
             session.micSensitivity = (packet[12].toInt() and 0xFF).coerceIn(0, 100)
             session.micEnabled = reportedMode == 3
+            if (packet.size >= 15) {
+                session.catalogSpeed = (packet[13].toInt() and 0xFF).coerceIn(0, 100)
+                val reportedCatalogMode = packet[14].toInt() and 0xFF
+                session.catalogHardwareMode = if (reportedCatalogMode in 0..28) reportedCatalogMode else -1
+            }
 
             if (selectedDeviceAddresses.contains(session.address)) {
                 activateSelectedSession()
