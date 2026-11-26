@@ -2969,7 +2969,11 @@ private object FirelightPalette {
             Color.rgb(255, 111, 66), Color.rgb(255, 95, 8) -> "accent"
             Color.rgb(255, 142, 105) -> "accentLight"
             Color.rgb(151, 160, 178), Color.rgb(183, 191, 207) -> "muted"
-            Color.rgb(222, 228, 239) -> "text"
+            Color.rgb(222, 228, 239), Color.rgb(225, 230, 240), Color.rgb(226, 231, 241) -> "text"
+            Color.rgb(105, 113, 128), Color.rgb(139, 149, 168), Color.rgb(110, 119, 137) -> "muted"
+            Color.rgb(27, 32, 43) -> "background"
+            Color.rgb(75, 48, 45), Color.rgb(55, 39, 39), Color.rgb(54, 62, 79) -> "button"
+            Color.rgb(111, 68, 60), Color.rgb(91, 83, 70) -> "buttonStroke"
             else -> return color
         }
         return get(key)
