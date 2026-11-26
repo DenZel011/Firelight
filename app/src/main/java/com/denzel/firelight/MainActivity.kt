@@ -222,10 +222,10 @@ class MainActivity : Activity() {
                 if (stroke != null) setStroke(dp(1), stroke)
             }
 
-        val background = Color.rgb(10, 12, 18)
-        val panel = Color.rgb(22, 26, 36)
-        val muted = Color.rgb(151, 160, 178)
-        val accent = Color.rgb(255, 111, 66)
+        val background = FirelightPalette.resolve(Color.rgb(10, 12, 18))
+        val panel = FirelightPalette.resolve(Color.rgb(22, 26, 36))
+        val muted = FirelightPalette.resolve(Color.rgb(151, 160, 178))
+        val accent = FirelightPalette.resolve(Color.rgb(255, 111, 66))
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -233,7 +233,7 @@ class MainActivity : Activity() {
             setBackgroundColor(background)
         }
 
-        fun text(value: String, size: Float, color: Int = Color.WHITE, bold: Boolean = false): TextView =
+        fun text(value: String, size: Float, color: Int = FirelightPalette.text, bold: Boolean = false): TextView =
             TextView(this).apply {
                 text = value
                 textSize = size
@@ -245,7 +245,7 @@ class MainActivity : Activity() {
         fun card(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            setBackground(rounded(panel, 24, Color.rgb(39, 45, 59)))
+            setBackground(rounded(panel, 24, FirelightPalette.resolve(Color.rgb(39, 45, 59))))
         }
 
         fun addGap(parent: LinearLayout, height: Int) {
@@ -257,10 +257,10 @@ class MainActivity : Activity() {
                 text = title
                 isAllCaps = false
                 textSize = 15f
-                setTextColor(if (primary) Color.WHITE else Color.rgb(222, 228, 239))
+                setTextColor(if (primary) FirelightPalette.text else FirelightPalette.resolve(Color.rgb(222, 228, 239)))
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                setBackground(rounded(if (primary) accent else Color.rgb(37, 43, 57), 17,
-                    if (primary) null else Color.rgb(55, 63, 80)))
+                setBackground(rounded(if (primary) accent else FirelightPalette.resolve(Color.rgb(37, 43, 57)), 17,
+                    if (primary) null else FirelightPalette.resolve(Color.rgb(55, 63, 80))))
                 stateListAnimator = null
                 elevation = 0f
                 setPadding(dp(16), 0, dp(16), 0)
@@ -273,7 +273,7 @@ class MainActivity : Activity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
         val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        brand.addView(text("FIRELIGHT", 25f, Color.WHITE, true))
+        brand.addView(text("FIRELIGHT", 25f, FirelightPalette.text, true))
         addGap(brand, 4)
         brand.addView(text("SMART LIGHT CONTROL", 10f, muted, true))
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
@@ -281,8 +281,8 @@ class MainActivity : Activity() {
             text = "☰"
             textSize = 23f
             gravity = android.view.Gravity.CENTER
-            setTextColor(Color.rgb(255, 142, 105))
-            setBackground(rounded(Color.rgb(43, 35, 36), 14, Color.rgb(91, 59, 54)))
+            setTextColor(FirelightPalette.resolve(Color.rgb(255, 142, 105)))
+            setBackground(rounded(FirelightPalette.resolve(Color.rgb(43, 35, 36)), 14, FirelightPalette.resolve(Color.rgb(91, 59, 54))))
             isClickable = true
             isFocusable = true
             setOnClickListener { showAppMenu(this) }
@@ -296,15 +296,15 @@ class MainActivity : Activity() {
         addGap(connectionCard, 8)
         deviceField = TextView(this).apply {
             text = "Пристрої · ${selectedDeviceAddresses.size} обрано  ▾"
-            textSize = 14f; setTextColor(Color.WHITE); gravity = android.view.Gravity.CENTER_VERTICAL
+            textSize = 14f; setTextColor(FirelightPalette.text); gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(16), 0, dp(12), 0); minHeight = dp(42)
-            setBackground(rounded(Color.rgb(29, 34, 46), 13, Color.rgb(61, 70, 88)))
+            setBackground(rounded(FirelightPalette.resolve(Color.rgb(29, 34, 46)), 13, FirelightPalette.resolve(Color.rgb(61, 70, 88))))
             isClickable = true; isFocusable = true
             setOnClickListener { showDevicePicker() }
         }
         connectionCard.addView(deviceField, LinearLayout.LayoutParams(-1, dp(42)))
         addGap(connectionCard, 8)
-        status = text("Шукаю ELK-BLEDOB…", 14f, Color.WHITE, true)
+        status = text("Шукаю ELK-BLEDOB…", 14f, FirelightPalette.text, true)
         connectionCard.addView(status)
         addGap(connectionCard, 10)
         val connectionActions = LinearLayout(this).apply {
@@ -356,7 +356,7 @@ class MainActivity : Activity() {
         colorCard.addView(colorHeader, LinearLayout.LayoutParams(-1, dp(52)))
         val colorHeaderBottomGap = View(this)
         colorCard.addView(colorHeaderBottomGap, LinearLayout.LayoutParams(1, dp(0)))
-        val pickerLabel = text("Обери свій відтінок", 17f, Color.WHITE, true)
+        val pickerLabel = text("Обери свій відтінок", 17f, FirelightPalette.text, true)
         colorCard.addView(pickerLabel)
         addGap(colorCard, 8)
 
@@ -425,8 +425,8 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
-            val titleView = text(title, 13f, Color.rgb(225, 230, 240), true)
-            val valueView = text("$initial$suffix", 13f, Color.WHITE, true)
+            val titleView = text(title, 13f, FirelightPalette.resolve(Color.rgb(225, 230, 240)), true)
+            val valueView = text("$initial$suffix", 13f, FirelightPalette.text, true)
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             line.addView(valueView)
             if (trailingView != null && title == "Яскравість") {
@@ -759,7 +759,7 @@ class MainActivity : Activity() {
         }
         categoryScroll.addView(categoryRow)
         effectsCard.addView(categoryScroll, LinearLayout.LayoutParams(-1, dp(42)))
-        val selectedEffectTitle = text("Auto Play  ·  #0", 21f, Color.WHITE, true).apply {
+        val selectedEffectTitle = text("Auto Play  ·  #0", 21f, FirelightPalette.text, true).apply {
             gravity = android.view.Gravity.CENTER
             setPadding(0, dp(8), 0, dp(12))
         }
@@ -815,13 +815,13 @@ class MainActivity : Activity() {
             selectedEffectCategory = category
             categoryRow.removeAllViews()
             effectCategories.forEach { item ->
-                val chip = text(item, 12f, if (item == category) Color.rgb(255, 142, 105) else Color.WHITE, true).apply {
+                val chip = text(item, 12f, if (item == category) FirelightPalette.resolve(Color.rgb(255, 142, 105)) else FirelightPalette.text, true).apply {
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(12), 0, dp(12), 0)
                     setBackground(rounded(
-                        if (item == category) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                        if (item == category) FirelightPalette.resolve(Color.rgb(48, 39, 39)) else Color.TRANSPARENT,
                         12,
-                        if (item == category) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+                        if (item == category) FirelightPalette.resolve(Color.rgb(105, 62, 55)) else Color.TRANSPARENT
                     ))
                     isClickable = true
                     isFocusable = true
@@ -834,10 +834,10 @@ class MainActivity : Activity() {
             effectsList.removeAllViews()
             val entries = catalogEffects.filter { it.group == category }
             entries.forEach { effect ->
-                val item = text("${effect.name}    ·    #${effect.id}", 14f, Color.WHITE, false).apply {
+                val item = text("${effect.name}    ·    #${effect.id}", 14f, FirelightPalette.text, false).apply {
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(11), dp(12), dp(11))
-                    setBackground(rounded(Color.rgb(27, 31, 41), 10, Color.TRANSPARENT))
+                    setBackground(rounded(FirelightPalette.resolve(Color.rgb(27, 31, 41)), 10, Color.TRANSPARENT))
                     isClickable = true
                     isFocusable = true
                     setOnClickListener { applyCatalogEffect(effect) }
@@ -914,12 +914,12 @@ class MainActivity : Activity() {
             clipChildren = false
             clipToPadding = false
         }
-        val musicSymbol = text(musicPresets[0].symbol, 60f, Color.rgb(255, 142, 105), true).apply {
+        val musicSymbol = text(musicPresets[0].symbol, 60f, FirelightPalette.resolve(Color.rgb(255, 142, 105)), true).apply {
             gravity = android.view.Gravity.CENTER
         }
         musicContent.addView(musicSymbol, LinearLayout.LayoutParams(-1, dp(76)))
         addGap(musicContent, 4)
-        val musicName = text(musicPresets[0].name, 23f, Color.WHITE, true).apply {
+        val musicName = text(musicPresets[0].name, 23f, FirelightPalette.text, true).apply {
             gravity = android.view.Gravity.CENTER
         }
         musicContent.addView(musicName, LinearLayout.LayoutParams(-1, -2))
@@ -927,11 +927,11 @@ class MainActivity : Activity() {
         musicPage.addView(musicCard, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun styleMusicIcon(view: TextView, active: Boolean) {
-            view.setTextColor(if (active) Color.rgb(255, 142, 105) else Color.WHITE)
+            view.setTextColor(if (active) FirelightPalette.resolve(Color.rgb(255, 142, 105)) else FirelightPalette.text)
             view.background = rounded(
-                if (active) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                if (active) FirelightPalette.resolve(Color.rgb(48, 39, 39)) else Color.TRANSPARENT,
                 10,
-                if (active) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+                if (active) FirelightPalette.resolve(Color.rgb(105, 62, 55)) else Color.TRANSPARENT
             )
         }
 
@@ -987,7 +987,7 @@ class MainActivity : Activity() {
         }
 
         musicPresets.forEachIndexed { index, preset ->
-            val icon = text(preset.symbol, 18f, Color.WHITE, true).apply {
+            val icon = text(preset.symbol, 18f, FirelightPalette.text, true).apply {
                 gravity = android.view.Gravity.CENTER
                 isClickable = true
                 isFocusable = true
@@ -1039,7 +1039,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             setPadding(dp(3), dp(7), dp(3), dp(4))
-            setBackground(rounded(Color.rgb(18, 21, 29), 20, Color.rgb(35, 41, 54)))
+            setBackground(rounded(FirelightPalette.resolve(Color.rgb(18, 21, 29)), 20, FirelightPalette.resolve(Color.rgb(35, 41, 54))))
         }
         val navLabels = listOf("Вогонь", "Хвиля", "Веселка", "Режими", "Музика", "Конструктор")
         val navGlyphs = listOf("", "≋", "◉", "✦", "♪", "⌘")
@@ -1095,12 +1095,12 @@ class MainActivity : Activity() {
             pageHost.addView(noActiveDeviceView, FrameLayout.LayoutParams(-1, -1))
             navItems.forEachIndexed { i, item ->
                 item.setBackground(rounded(
-                    if (i == index) Color.rgb(48, 39, 39) else Color.TRANSPARENT,
+                    if (i == index) FirelightPalette.resolve(Color.rgb(48, 39, 39)) else Color.TRANSPARENT,
                     14,
-                    if (i == index) Color.rgb(105, 62, 55) else Color.TRANSPARENT
+                    if (i == index) FirelightPalette.resolve(Color.rgb(105, 62, 55)) else Color.TRANSPARENT
                 ))
                 val label = item.getChildAt(1) as TextView
-                label.setTextColor(if (i == index) Color.rgb(255, 142, 105) else muted)
+                label.setTextColor(if (i == index) FirelightPalette.resolve(Color.rgb(255, 142, 105)) else muted)
                 if (i == index) label.setTypeface(label.typeface, android.graphics.Typeface.BOLD)
                 else label.setTypeface(label.typeface, android.graphics.Typeface.NORMAL)
             }
@@ -1119,7 +1119,7 @@ class MainActivity : Activity() {
             if (index == 0) {
                 item.addView(FlameGlyphView(this), LinearLayout.LayoutParams(dp(23), dp(23)))
             } else {
-                item.addView(text(navGlyphs[index], 21f, Color.WHITE, true).apply {
+                item.addView(text(navGlyphs[index], 21f, FirelightPalette.text, true).apply {
                     gravity = android.view.Gravity.CENTER
                 }, LinearLayout.LayoutParams(-1, dp(23)))
             }
@@ -1169,8 +1169,8 @@ class MainActivity : Activity() {
         val rows = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(0, dp(4), 0, dp(4))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.rgb(27, 32, 43)); cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), Color.rgb(61, 70, 88))
+                setColor(FirelightPalette.resolve(Color.rgb(27, 32, 43))); cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), FirelightPalette.resolve(Color.rgb(61, 70, 88)))
             }
         }
         val checks = linkedMapOf<String, TextView>()
@@ -1183,15 +1183,15 @@ class MainActivity : Activity() {
                 val selected = selectedDeviceAddresses.contains(a) && available
                 checks[a]?.apply {
                     text = if (selected) "✓" else ""
-                    setTextColor(if (available) Color.rgb(255, 142, 105) else Color.rgb(105, 113, 128))
+                    setTextColor(if (available) FirelightPalette.resolve(Color.rgb(255, 142, 105)) else FirelightPalette.resolve(Color.rgb(105, 113, 128)))
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (selected) Color.rgb(75, 48, 45) else Color.TRANSPARENT)
+                        setColor(if (selected) FirelightPalette.resolve(Color.rgb(75, 48, 45)) else Color.TRANSPARENT)
                         cornerRadius = dp(10).toFloat()
                     }
                 }
                 labels[a]?.apply {
                     text = deviceDisplayName(a)
-                    setTextColor(if (available) Color.rgb(226, 231, 241) else Color.rgb(105, 113, 128))
+                    setTextColor(if (available) FirelightPalette.resolve(Color.rgb(226, 231, 241)) else FirelightPalette.resolve(Color.rgb(105, 113, 128)))
                 }
                 rowViews[a]?.apply {
                     alpha = if (available) 1f else .58f
@@ -1204,11 +1204,11 @@ class MainActivity : Activity() {
         addresses.forEach { a ->
             val check = TextView(this).apply {
                 textSize = 15f; typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-                setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
+                setTextColor(FirelightPalette.resolve(Color.rgb(255, 142, 105))); gravity = android.view.Gravity.CENTER
             }
             val label = TextView(this).apply {
                 text = deviceDisplayName(a); textSize = 14f
-                setTextColor(Color.rgb(226, 231, 241)); gravity = android.view.Gravity.CENTER_VERTICAL
+                setTextColor(FirelightPalette.resolve(Color.rgb(226, 231, 241))); gravity = android.view.Gravity.CENTER_VERTICAL
             }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
@@ -1261,9 +1261,9 @@ class MainActivity : Activity() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(54), dp(18), dp(24))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.rgb(22, 26, 36))
+                setColor(FirelightPalette.resolve(Color.rgb(22, 26, 36)))
                 cornerRadii = floatArrayOf(dp(22).toFloat(), dp(22).toFloat(), 0f, 0f, 0f, 0f, dp(22).toFloat(), dp(22).toFloat())
-                setStroke(dp(1), Color.rgb(39, 45, 59))
+                setStroke(dp(1), FirelightPalette.resolve(Color.rgb(39, 45, 59)))
             }
             isClickable = true; isFocusable = true; setOnClickListener { }
         }
@@ -1271,7 +1271,7 @@ class MainActivity : Activity() {
         panel.addView(TextView(this).apply {
             text = "МЕНЮ"; textSize = 18f
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-            setTextColor(Color.rgb(226, 231, 241)); letterSpacing = .14f
+            setTextColor(FirelightPalette.resolve(Color.rgb(226, 231, 241))); letterSpacing = .14f
             gravity = android.view.Gravity.CENTER
         }, LinearLayout.LayoutParams(-1, dp(42)))
         fun item(title: String, symbol: String, action: () -> Unit) {
@@ -1279,8 +1279,8 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(dp(15), 0, dp(14), 0)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(Color.rgb(37, 43, 57)); cornerRadius = dp(16).toFloat()
-                    setStroke(dp(1), Color.rgb(55, 63, 80))
+                    setColor(FirelightPalette.resolve(Color.rgb(37, 43, 57))); cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), FirelightPalette.resolve(Color.rgb(55, 63, 80)))
                 }
                 isClickable = true; isFocusable = true; setOnClickListener { closeAppMenu(); action() }
             }
@@ -1288,11 +1288,11 @@ class MainActivity : Activity() {
                 row.addView(PowerMenuGlyph(this), LinearLayout.LayoutParams(dp(34), dp(34)))
             } else {
                 row.addView(TextView(this).apply {
-                    text = symbol; textSize = 21f; setTextColor(Color.rgb(255, 142, 105)); gravity = android.view.Gravity.CENTER
+                    text = symbol; textSize = 21f; setTextColor(FirelightPalette.resolve(Color.rgb(255, 142, 105))); gravity = android.view.Gravity.CENTER
                 }, LinearLayout.LayoutParams(dp(34), -1))
             }
             row.addView(TextView(this).apply {
-                text = title; textSize = 16f; setTextColor(Color.rgb(222, 228, 239)); gravity = android.view.Gravity.CENTER_VERTICAL
+                text = title; textSize = 16f; setTextColor(FirelightPalette.resolve(Color.rgb(222, 228, 239))); gravity = android.view.Gravity.CENTER_VERTICAL
             }, LinearLayout.LayoutParams(0, -1, 1f))
             panel.addView(row, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
         }
@@ -1311,15 +1311,15 @@ class MainActivity : Activity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         val paletteFields = listOf(
-            Triple("background", "Фон застосунку", Color.rgb(10, 12, 18)),
-            Triple("panel", "Фон карток", Color.rgb(22, 26, 36)),
-            Triple("button", "Кнопки", Color.rgb(37, 43, 57)),
-            Triple("buttonStroke", "Контур кнопок", Color.rgb(55, 63, 80)),
-            Triple("accent", "Основний акцент", Color.rgb(255, 111, 66)),
-            Triple("accentLight", "Світлий акцент", Color.rgb(255, 142, 105)),
-            Triple("text", "Текст", Color.rgb(222, 228, 239)),
-            Triple("muted", "Приглушений текст", Color.rgb(151, 160, 178)),
-            Triple("border", "Контури карток", Color.rgb(39, 45, 59))
+            Triple("background", "Фон застосунку", FirelightPalette.resolve(Color.rgb(10, 12, 18))),
+            Triple("panel", "Фон карток", FirelightPalette.resolve(Color.rgb(22, 26, 36))),
+            Triple("button", "Кнопки", FirelightPalette.resolve(Color.rgb(37, 43, 57))),
+            Triple("buttonStroke", "Контур кнопок", FirelightPalette.resolve(Color.rgb(55, 63, 80))),
+            Triple("accent", "Основний акцент", FirelightPalette.resolve(Color.rgb(255, 111, 66))),
+            Triple("accentLight", "Світлий акцент", FirelightPalette.resolve(Color.rgb(255, 142, 105))),
+            Triple("text", "Текст", FirelightPalette.resolve(Color.rgb(222, 228, 239))),
+            Triple("muted", "Приглушений текст", FirelightPalette.resolve(Color.rgb(151, 160, 178))),
+            Triple("border", "Контури карток", FirelightPalette.resolve(Color.rgb(39, 45, 59)))
         )
         val fields = linkedMapOf<String, EditText>()
         val content = LinearLayout(this).apply {
@@ -1397,7 +1397,7 @@ class MainActivity : Activity() {
         }
         val hint = TextView(this).apply {
             text = "Знайдені Bluetooth-пристрої поблизу"
-            textSize = 13f; setTextColor(Color.rgb(151, 160, 178))
+            textSize = 13f; setTextColor(FirelightPalette.resolve(Color.rgb(151, 160, 178)))
         }
         content.addView(hint, LinearLayout.LayoutParams(-1, dp(34)))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1432,7 +1432,7 @@ class MainActivity : Activity() {
             if (discoveredDevices.isEmpty()) {
                 list.addView(TextView(this).apply {
                     text = if (scanning) "Пошук пристроїв..." else "Поки нічого не знайдено. Натисни «Шукати пристрої»."
-                    textSize = 14f; setTextColor(Color.rgb(183, 191, 207)); gravity = android.view.Gravity.CENTER
+                    textSize = 14f; setTextColor(FirelightPalette.resolve(Color.rgb(183, 191, 207))); gravity = android.view.Gravity.CENTER
                     setPadding(0, dp(24), 0, dp(24))
                 })
             }
@@ -1443,23 +1443,23 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
                     setPadding(dp(10), dp(8), dp(8), dp(8))
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(Color.rgb(29, 34, 46)); cornerRadius = dp(12).toFloat()
+                        setColor(FirelightPalette.resolve(Color.rgb(29, 34, 46))); cornerRadius = dp(12).toFloat()
                     }
                 }
                 val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 info.addView(TextView(this).apply {
                     text = found.name; textSize = 14f
-                    setTextColor(Color.rgb(226, 231, 241)); maxLines = 1
+                    setTextColor(FirelightPalette.resolve(Color.rgb(226, 231, 241))); maxLines = 1
                 })
                 info.addView(TextView(this).apply {
                     text = "$address  ·  RSSI ${found.rssi} dBm"
-                    textSize = 10f; setTextColor(Color.rgb(139, 149, 168)); maxLines = 1
+                    textSize = 10f; setTextColor(FirelightPalette.resolve(Color.rgb(139, 149, 168))); maxLines = 1
                 })
                 row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
                 val toggle = TextView(this).apply {
                     text = if (added) "Додано ✓" else "Додати +"
                     textSize = 12f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(if (added) Color.rgb(255, 142, 105) else Color.rgb(130, 210, 164))
+                    setTextColor(if (added) FirelightPalette.resolve(Color.rgb(255, 142, 105)) else FirelightPalette.resolve(Color.rgb(130, 210, 164)))
                     gravity = android.view.Gravity.CENTER
                     setPadding(dp(8), dp(8), dp(8), dp(8))
                     setOnClickListener {
@@ -1491,7 +1491,7 @@ class MainActivity : Activity() {
 
     private class PowerMenuGlyph(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(255, 142, 105)
+            color = FirelightPalette.resolve(Color.rgb(255, 142, 105))
             style = Paint.Style.STROKE
             strokeWidth = resources.displayMetrics.density * 2.2f
             strokeCap = Paint.Cap.ROUND
@@ -1530,20 +1530,20 @@ class MainActivity : Activity() {
             content.addView(TextView(this).apply {
                 text = defaultName
                 textSize = 12f
-                setTextColor(Color.rgb(151, 160, 178))
+                setTextColor(FirelightPalette.resolve(Color.rgb(151, 160, 178)))
             })
             val field = EditText(this).apply {
                 setSingleLine(true)
                 textSize = 15f
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.rgb(110, 119, 137))
+                setTextColor(FirelightPalette.text)
+                setHintTextColor(FirelightPalette.resolve(Color.rgb(110, 119, 137)))
                 hint = defaultName
                 setText(deviceDisplayName(device.address))
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(Color.rgb(29, 34, 46))
+                    setColor(FirelightPalette.resolve(Color.rgb(29, 34, 46)))
                     cornerRadius = dp(11).toFloat()
-                    setStroke(dp(1), Color.rgb(61, 70, 88))
+                    setStroke(dp(1), FirelightPalette.resolve(Color.rgb(61, 70, 88)))
                 }
             }
             content.addView(field, LinearLayout.LayoutParams(-1, dp(46)))
@@ -2128,24 +2128,24 @@ class MainActivity : Activity() {
     }
 
     private fun bleColor(name: String): Int = when (bleColorIndex(name)) {
-        0 -> Color.rgb(255, 0, 0)
-        1 -> Color.rgb(0, 255, 0)
-        2 -> Color.rgb(0, 0, 255)
-        3 -> Color.rgb(255, 255, 0)
-        4 -> Color.rgb(0, 255, 255)
-        5 -> Color.rgb(160, 0, 255)
-        6 -> Color.WHITE
+        0 -> FirelightPalette.resolve(Color.rgb(255, 0, 0))
+        1 -> FirelightPalette.resolve(Color.rgb(0, 255, 0))
+        2 -> FirelightPalette.resolve(Color.rgb(0, 0, 255))
+        3 -> FirelightPalette.resolve(Color.rgb(255, 255, 0))
+        4 -> FirelightPalette.resolve(Color.rgb(0, 255, 255))
+        5 -> FirelightPalette.resolve(Color.rgb(160, 0, 255))
+        6 -> FirelightPalette.text
         else -> Color.BLACK
     }
 
     private fun mapBleCatalogEffect(name: String): BleCatalogSpec {
-        val red = Color.rgb(255, 0, 0)
-        val green = Color.rgb(0, 255, 0)
-        val blue = Color.rgb(0, 0, 255)
-        val yellow = Color.rgb(255, 255, 0)
-        val cyan = Color.rgb(0, 255, 255)
-        val purple = Color.rgb(160, 0, 255)
-        val white = Color.WHITE
+        val red = FirelightPalette.resolve(Color.rgb(255, 0, 0))
+        val green = FirelightPalette.resolve(Color.rgb(0, 255, 0))
+        val blue = FirelightPalette.resolve(Color.rgb(0, 0, 255))
+        val yellow = FirelightPalette.resolve(Color.rgb(255, 255, 0))
+        val cyan = FirelightPalette.resolve(Color.rgb(0, 255, 255))
+        val purple = FirelightPalette.resolve(Color.rgb(160, 0, 255))
+        val white = FirelightPalette.text
         val rainbow = intArrayOf(red, yellow, green, cyan, blue, purple, white)
         val rgb = intArrayOf(red, green, blue)
         val ycp = intArrayOf(yellow, cyan, purple)
@@ -2979,8 +2979,8 @@ private class BulbToggleView(
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var lit: Boolean? = null
-    private val accent = Color.rgb(255, 142, 105)
-    private val dim = Color.rgb(151, 160, 178)
+    private val accent = FirelightPalette.resolve(Color.rgb(255, 142, 105))
+    private val dim = FirelightPalette.resolve(Color.rgb(151, 160, 178))
 
     init {
         isClickable = true
@@ -3011,17 +3011,17 @@ private class BulbToggleView(
         val radius = 12f * density
         paint.style = Paint.Style.FILL
         paint.color = when (lit) {
-            true -> Color.rgb(55, 39, 39)
-            false -> Color.rgb(29, 34, 46)
-            null -> Color.rgb(34, 35, 43)
+            true -> FirelightPalette.resolve(Color.rgb(55, 39, 39))
+            false -> FirelightPalette.resolve(Color.rgb(29, 34, 46))
+            null -> FirelightPalette.resolve(Color.rgb(34, 35, 43))
         }
         canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1f * density
         paint.color = when (lit) {
-            true -> Color.rgb(111, 68, 60)
-            false -> Color.rgb(61, 70, 88)
-            null -> Color.rgb(91, 83, 70)
+            true -> FirelightPalette.resolve(Color.rgb(111, 68, 60))
+            false -> FirelightPalette.resolve(Color.rgb(61, 70, 88))
+            null -> FirelightPalette.resolve(Color.rgb(91, 83, 70))
         }
         canvas.drawRoundRect(left, top, left + side, top + side, radius, radius, paint)
 
@@ -3033,7 +3033,7 @@ private class BulbToggleView(
         val iconColor = when (lit) {
             true -> accent
             false -> dim
-            null -> Color.rgb(177, 157, 126)
+            null -> FirelightPalette.resolve(Color.rgb(177, 157, 126))
         }
         paint.color = iconColor
         paint.strokeWidth = 1.8f * d
@@ -3091,7 +3091,7 @@ private class FlameGlyphView(context: Context) : View(context) {
             cubicTo(12.2f, 8.2f, 12.8f, 5.4f, 12f, 1.5f)
             close()
         }
-        paint.color = Color.WHITE
+        paint.color = FirelightPalette.text
         paint.style = Paint.Style.FILL
         canvas.drawPath(outer, paint)
 
@@ -3105,7 +3105,7 @@ private class FlameGlyphView(context: Context) : View(context) {
             cubicTo(12.2f, 14.2f, 12.3f, 13.1f, 12.1f, 12.1f)
             close()
         }
-        paint.color = Color.rgb(48, 39, 39)
+        paint.color = FirelightPalette.resolve(Color.rgb(48, 39, 39))
         canvas.drawPath(inner, paint)
         canvas.restoreToCount(save)
     }
@@ -3175,7 +3175,7 @@ private class ColorWheelView(
             paint.strokeWidth = 3f * density
             paint.color = Color.BLACK
             canvas.drawCircle(cx, cy, 10f * density, paint)
-            paint.color = Color.WHITE
+            paint.color = FirelightPalette.text
             paint.strokeWidth = 2f * density
             canvas.drawCircle(cx, cy, 7f * density, paint)
             paint.style = Paint.Style.FILL
@@ -3270,17 +3270,17 @@ private class ModernSliderView(
         val cy = height / 2f
         val fraction = if (maximum == 0) 0f else value.toFloat() / maximum
         val x = left + (right - left) * fraction
-        track.color = Color.rgb(54, 62, 79)
+        track.color = FirelightPalette.resolve(Color.rgb(54, 62, 79))
         track.strokeWidth = 5f * density
         track.strokeCap = Paint.Cap.ROUND
         canvas.drawLine(left, cy, right, cy, track)
-        track.color = Color.rgb(255, 111, 66)
+        track.color = FirelightPalette.resolve(Color.rgb(255, 111, 66))
         canvas.drawLine(left, cy, x, cy, track)
         track.style = Paint.Style.FILL
         track.setShadowLayer(5f * density, 0f, 2f * density, 0x55300000)
         canvas.drawCircle(x, cy, thumbRadius, track)
         track.clearShadowLayer()
-        track.color = Color.WHITE
+        track.color = FirelightPalette.text
         canvas.drawCircle(x, cy, 3f * density, track)
     }
 
