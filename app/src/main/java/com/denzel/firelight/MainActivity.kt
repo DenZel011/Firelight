@@ -188,6 +188,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirelightPalette.initialize(this)
         createInterface()
         managedDeviceAddresses.add(targetAddress.uppercase())
         managedDeviceAddresses.add(melkAddress.uppercase())
@@ -1296,13 +1297,78 @@ class MainActivity : Activity() {
             panel.addView(row, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
         }
         item("Перейменувати девайси", "✎") { showRenameDevicesDialog() }
-        item("Підключення пристроїв", "⌕") { showDeviceManagementDialog() }
+        item("Змінити кольорову гаму", "◐") { showPaletteDialog() }
         panel.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         item("Вимкнути все", "power") { turnOffAllConnectedDevices() }
         host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         drawerOverlay = overlay; drawerPanel = panel
         overlay.animate().alpha(1f).setDuration(180L).start()
         panel.translationX = width.toFloat(); panel.animate().translationX(0f).setDuration(230L).start()
+    }
+
+    private fun showPaletteDialog() {
+        val prefs = getSharedPreferences("firelight_palette", MODE_PRIVATE)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val paletteFields = listOf(
+            Triple("background", "Фон застосунку", Color.rgb(10, 12, 18)),
+            Triple("panel", "Фон карток", Color.rgb(22, 26, 36)),
+            Triple("button", "Кнопки", Color.rgb(37, 43, 57)),
+            Triple("buttonStroke", "Контур кнопок", Color.rgb(55, 63, 80)),
+            Triple("accent", "Основний акцент", Color.rgb(255, 111, 66)),
+            Triple("accentLight", "Світлий акцент", Color.rgb(255, 142, 105)),
+            Triple("text", "Текст", Color.rgb(222, 228, 239)),
+            Triple("muted", "Приглушений текст", Color.rgb(151, 160, 178)),
+            Triple("border", "Контури карток", Color.rgb(39, 45, 59))
+        )
+        val fields = linkedMapOf<String, EditText>()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+        }
+        paletteFields.forEach { (key, label, defaultColor) ->
+            content.addView(TextView(this).apply {
+                text = label
+                textSize = 13f
+                setTextColor(FirelightPalette.muted)
+            }, LinearLayout.LayoutParams(-1, dp(28)))
+            val field = EditText(this).apply {
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                setSingleLine(true)
+                hint = "#RRGGBB"
+                setText(String.format("#%06X", 0xFFFFFF and prefs.getInt(key, defaultColor)))
+                setTextColor(FirelightPalette.text)
+            }
+            fields[key] = field
+            content.addView(field, LinearLayout.LayoutParams(-1, dp(44)))
+        }
+        val scroll = ScrollView(this).apply { addView(content) }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Змінити кольорову гаму")
+            .setView(scroll)
+            .setNegativeButton("Скасувати", null)
+            .setPositiveButton("Зберегти") { _, _ ->
+                val editor = prefs.edit()
+                var valid = true
+                fields.forEach { (key, field) ->
+                    val value = field.text.toString().trim()
+                    try {
+                        val normalized = if (value.startsWith("#")) value else "#$value"
+                        if (!normalized.matches(Regex("#[0-9A-Fa-f]{6}"))) throw IllegalArgumentException()
+                        editor.putInt(key, Color.parseColor(normalized))
+                    } catch (_: Exception) {
+                        valid = false
+                    }
+                }
+                if (!valid) {
+                    Toast.makeText(this, "Вкажи всі кольори у форматі #RRGGBB", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                editor.apply()
+                FirelightPalette.initialize(this)
+                recreate()
+            }
+            .show()
     }
 
     private fun closeAppMenu() {
@@ -2857,6 +2923,51 @@ class MainActivity : Activity() {
         closeGattConnection()
         try { stopService(android.content.Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
         super.onDestroy()
+    }
+}
+
+private object FirelightPalette {
+    private lateinit var preferences: android.content.SharedPreferences
+    private val defaults = mapOf(
+        "background" to Color.rgb(10, 12, 18),
+        "panel" to Color.rgb(22, 26, 36),
+        "button" to Color.rgb(37, 43, 57),
+        "buttonStroke" to Color.rgb(55, 63, 80),
+        "accent" to Color.rgb(255, 111, 66),
+        "accentLight" to Color.rgb(255, 142, 105),
+        "text" to Color.rgb(222, 228, 239),
+        "muted" to Color.rgb(151, 160, 178),
+        "border" to Color.rgb(39, 45, 59)
+    )
+    fun initialize(context: Context) {
+        preferences = context.getSharedPreferences("firelight_palette", Context.MODE_PRIVATE)
+    }
+    private fun get(key: String): Int = preferences.getInt(key, defaults[key] ?: Color.WHITE)
+    val background: Int get() = get("background")
+    val panel: Int get() = get("panel")
+    val button: Int get() = get("button")
+    val buttonStroke: Int get() = get("buttonStroke")
+    val accent: Int get() = get("accent")
+    val accentLight: Int get() = get("accentLight")
+    val text: Int get() = get("text")
+    val muted: Int get() = get("muted")
+    val border: Int get() = get("border")
+
+    fun resolve(color: Int): Int {
+        val key = when (color) {
+            Color.rgb(10, 12, 18), Color.rgb(18, 21, 29) -> "background"
+            Color.rgb(22, 26, 36) -> "panel"
+            Color.rgb(29, 34, 46), Color.rgb(27, 31, 41), Color.rgb(34, 35, 43) -> "panel"
+            Color.rgb(37, 43, 57), Color.rgb(43, 35, 36), Color.rgb(48, 39, 39) -> "button"
+            Color.rgb(55, 63, 80), Color.rgb(61, 70, 88), Color.rgb(91, 59, 54) -> "buttonStroke"
+            Color.rgb(39, 45, 59), Color.rgb(35, 41, 54) -> "border"
+            Color.rgb(255, 111, 66), Color.rgb(255, 95, 8) -> "accent"
+            Color.rgb(255, 142, 105) -> "accentLight"
+            Color.rgb(151, 160, 178), Color.rgb(183, 191, 207) -> "muted"
+            Color.rgb(222, 228, 239) -> "text"
+            else -> return color
+        }
+        return get(key)
     }
 }
 
